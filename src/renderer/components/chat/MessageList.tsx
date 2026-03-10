@@ -7,9 +7,10 @@ import { StreamingIndicator } from './StreamingIndicator';
 interface MessageListProps {
   messages: ProviderMessage[];
   isStreaming: boolean;
+  repoName?: string;
 }
 
-export function MessageList({ messages, isStreaming }: MessageListProps) {
+export function MessageList({ messages, isStreaming, repoName }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const visibleMessages = messages.filter((message) => message.role !== 'system');
 
@@ -23,7 +24,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
         <div className="text-center">
           <MessageSquare size={38} className="mx-auto mb-4 opacity-35" />
           <p className="text-[42px] font-semibold leading-none text-text-primary">Let&apos;s build</p>
-          <p className="mt-2 text-3xl text-text-secondary">omnicode</p>
+          <p className="mt-2 text-3xl text-text-secondary">{repoName || 'your-repo'}</p>
         </div>
       </div>
     );

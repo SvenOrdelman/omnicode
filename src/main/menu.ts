@@ -38,6 +38,13 @@ export function createAppMenu(): void {
             getMainWindow()?.webContents.send('menu:open-project');
           },
         },
+        {
+          label: 'Save File',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            getMainWindow()?.webContents.send('menu:save-file');
+          },
+        },
         { type: 'separator' },
         {
           label: 'Settings',

@@ -92,21 +92,6 @@ function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/g, '\n');
 }
 
-function countChangedLines(previousContent: string, nextContent: string): number {
-  const previousLines = normalizeLineEndings(previousContent).split('\n');
-  const nextLines = normalizeLineEndings(nextContent).split('\n');
-  const maxLines = Math.max(previousLines.length, nextLines.length);
-
-  let changed = 0;
-  for (let index = 0; index < maxLines; index += 1) {
-    if ((previousLines[index] ?? '') !== (nextLines[index] ?? '')) {
-      changed += 1;
-    }
-  }
-
-  return changed;
-}
-
 function extractLineContext(content: string, lineNumber: number): {
   lineText: string;
   contextSnippet: string;
@@ -145,7 +130,7 @@ function extractLineContext(content: string, lineNumber: number): {
 
 export function RightPane() {
   const currentProject = useProjectStore((s) => s.currentProject);
-  const { sendPrompt, appendLocalMessage } = useChat();
+  const { sendPrompt } = useChat();
   const setActiveView = useUIStore((s) => s.setActiveView);
 
   const [changes, setChanges] = useState<ChangedFile[]>([]);
@@ -161,10 +146,11 @@ export function RightPane() {
   const diffEditorRef = useRef<MonacoEditor.IStandaloneDiffEditor | null>(null);
   const modifiedContentSubscriptionRef = useRef<{ dispose: () => void } | null>(null);
   const saveFileEditRef = useRef<() => void>(() => undefined);
+  const lastAutoRefreshAtRef = useRef(0);
 
   const canEditSelectedFile = useMemo(
-    () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree' && !savingFileEdit),
-    [fileView, savingFileEdit, selectedChangeFile]
+    () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree'),
+    [fileView, selectedChangeFile]
   );
   const hasUnsavedEdit = canEditSelectedFile && editorDraft !== editorBaseContent;
   const lockNavigation = hasUnsavedEdit || savingFileEdit;
@@ -179,9 +165,7 @@ export function RightPane() {
       const projectChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
       setChanges(projectChanges);
       setSelectedChangeFile((previous) => {
-        if (previous && projectChanges.some((change) => change.path === previous)) {
-          return previous;
-        }
+        if (previous) return previous;
         return projectChanges[0]?.path ?? null;
       });
     } catch (err: unknown) {
@@ -225,6 +209,59 @@ export function RightPane() {
     loadChanges().catch(() => undefined);
   }, [currentProject, loadChanges]);
 
+  const refreshOnWindowActive = useCallback(async () => {
+    if (!currentProject || lockNavigation) return;
+
+    try {
+      const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
+      setChanges(updatedChanges);
+
+      const activeFile = selectedChangeFile || updatedChanges[0]?.path || null;
+      if (!selectedChangeFile && activeFile) {
+        setSelectedChangeFile(activeFile);
+      }
+
+      if (!activeFile) {
+        setFileView(null);
+        setEditorDraft('');
+        setEditorBaseContent('');
+        return;
+      }
+
+      const refreshedView: GitFileView = await loadGitFileView(currentProject.path, activeFile);
+      setFileView(refreshedView);
+      setEditorDraft(refreshedView.content);
+      setEditorBaseContent(refreshedView.content);
+    } catch {
+      // Ignore background refresh errors to avoid noisy banners on focus changes.
+    }
+  }, [currentProject, loadGitFileView, lockNavigation, selectedChangeFile]);
+
+  useEffect(() => {
+    const AUTO_REFRESH_THROTTLE_MS = 250;
+
+    const maybeRefresh = () => {
+      const now = Date.now();
+      if (now - lastAutoRefreshAtRef.current < AUTO_REFRESH_THROTTLE_MS) return;
+      lastAutoRefreshAtRef.current = now;
+      refreshOnWindowActive().catch(() => undefined);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        maybeRefresh();
+      }
+    };
+
+    window.addEventListener('focus', maybeRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', maybeRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshOnWindowActive]);
+
   useEffect(() => {
     if (!currentProject || !selectedChangeFile) {
       setFileView(null);
@@ -248,34 +285,6 @@ export function RightPane() {
       })
       .finally(() => setLoadingFileView(false));
   }, [currentProject, loadGitFileView, selectedChangeFile]);
-
-  const refreshChangesAndFile = useCallback(
-    async (preferredFilePath: string | null) => {
-      if (!currentProject) return;
-
-      const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
-      setChanges(updatedChanges);
-
-      const nextSelected =
-        preferredFilePath && updatedChanges.some((change) => change.path === preferredFilePath)
-          ? preferredFilePath
-          : updatedChanges[0]?.path ?? null;
-
-      setSelectedChangeFile(nextSelected);
-
-      if (nextSelected) {
-        const refreshedView: GitFileView = await loadGitFileView(currentProject.path, nextSelected);
-        setFileView(refreshedView);
-        setEditorDraft(refreshedView.content);
-        setEditorBaseContent(refreshedView.content);
-      } else {
-        setFileView(null);
-        setEditorDraft('');
-        setEditorBaseContent('');
-      }
-    },
-    [currentProject, loadGitFileView]
-  );
 
   const selectChangeFile = useCallback(
     (filePath: string) => {
@@ -322,9 +331,8 @@ export function RightPane() {
   }, [editorDraft, fileView?.content, selectedChangeFile, sendLineCommentToChat]);
 
   const saveFullFileEdit = useCallback(async () => {
-    if (!currentProject || !selectedChangeFile || !canEditSelectedFile || !hasUnsavedEdit) return;
+    if (!currentProject || !selectedChangeFile || !canEditSelectedFile || !hasUnsavedEdit || savingFileEdit) return;
 
-    const previousContent = editorBaseContent;
     const nextContent = editorDraft;
     setSavingFileEdit(true);
     setError(null);
@@ -336,25 +344,24 @@ export function RightPane() {
         content: nextContent,
       });
 
-      const changedLines = countChangedLines(previousContent, nextContent);
-      await appendLocalMessage(
-        `Saved edits in \`${selectedChangeFile}\` (${changedLines} line${changedLines === 1 ? '' : 's'} changed).`
-      );
+      // Keep editor models and cursor stable; only mark current content as saved.
+      setEditorBaseContent(nextContent);
+      setFileView((previous) => (previous ? { ...previous, content: nextContent } : previous));
 
-      await refreshChangesAndFile(selectedChangeFile);
+      const updatedChanges = await ipc().listGitChanges(currentProject.path);
+      setChanges(updatedChanges);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save file edits');
     } finally {
       setSavingFileEdit(false);
     }
   }, [
-    appendLocalMessage,
     canEditSelectedFile,
     currentProject,
     editorBaseContent,
     editorDraft,
     hasUnsavedEdit,
-    refreshChangesAndFile,
+    savingFileEdit,
     selectedChangeFile,
   ]);
 
@@ -363,6 +370,16 @@ export function RightPane() {
       saveFullFileEdit().catch(() => undefined);
     };
   }, [saveFullFileEdit]);
+
+  useEffect(() => {
+    const handleSaveEvent: EventListener = () => {
+      saveFileEditRef.current();
+    };
+    window.addEventListener('omnicode:save-active-editor', handleSaveEvent);
+    return () => {
+      window.removeEventListener('omnicode:save-active-editor', handleSaveEvent);
+    };
+  }, []);
 
   const handleDiffEditorMount = useCallback(
     (editor: MonacoEditor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor')) => {

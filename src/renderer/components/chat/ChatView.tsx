@@ -36,7 +36,7 @@ export function ChatView() {
       </div>
 
       {/* Messages */}
-      <MessageList messages={messages} isStreaming={isStreaming} />
+      <MessageList messages={messages} isStreaming={isStreaming} repoName={currentProject?.name} />
 
       {/* Error banner */}
       {error && (

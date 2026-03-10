@@ -2,11 +2,13 @@ import React, { useEffect } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
 import { useUIStore } from './stores/ui.store';
 import { useAuthStore } from './stores/auth.store';
+import { useProjectStore } from './stores/project.store';
 import { ipc } from './lib/ipc-client';
 
 export function App() {
   const { setActiveView, toggleTerminal } = useUIStore();
   const setAuthStatus = useAuthStore((s) => s.setAuthStatus);
+  const currentProject = useProjectStore((s) => s.currentProject);
 
   // Check auth on mount
   useEffect(() => {
@@ -14,10 +16,12 @@ export function App() {
       .getAuthStatus()
       .then((status) => {
         setAuthStatus(status);
-        if (!status.authenticated) setActiveView('welcome');
+        if (!status.authenticated && !currentProject) {
+          setActiveView('welcome');
+        }
       })
       .catch(console.error);
-  }, [setAuthStatus, setActiveView]);
+  }, [currentProject, setAuthStatus, setActiveView]);
 
   // Menu event listeners
   useEffect(() => {
@@ -25,6 +29,9 @@ export function App() {
       ipc().onMenuEvent('menu:new-chat', () => setActiveView('chat')),
       ipc().onMenuEvent('menu:open-project', () => {
         ipc().openProject();
+      }),
+      ipc().onMenuEvent('menu:save-file', () => {
+        window.dispatchEvent(new Event('omnicode:save-active-editor'));
       }),
       ipc().onMenuEvent('menu:settings', () => setActiveView('settings')),
       ipc().onMenuEvent('menu:toggle-terminal', () => toggleTerminal()),

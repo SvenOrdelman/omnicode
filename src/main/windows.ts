@@ -28,6 +28,18 @@ export function createMainWindow(): BrowserWindow {
     );
   }
 
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const isSaveShortcut =
+      input.type === 'keyDown' &&
+      (input.meta || input.control) &&
+      input.key.toLowerCase() === 's';
+
+    if (!isSaveShortcut) return;
+
+    event.preventDefault();
+    mainWindow?.webContents.send('menu:save-file');
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
