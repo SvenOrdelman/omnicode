@@ -7,6 +7,10 @@ interface GitExecResult {
   stderr: string;
 }
 
+function normalizeLineEndings(content: string): string {
+  return content.replace(/\r\n/g, '\n');
+}
+
 export interface GitBranchInfo {
   branches: string[];
   current: string | null;
@@ -156,7 +160,7 @@ export async function getGitDiff(cwd: string, filePath: string): Promise<string>
   }
 
   if (!sections.length) {
-    return 'No diff available for this file.';
+    return 'No diff availables for this file.';
   }
 
   return sections.join('\n\n');
@@ -222,11 +226,11 @@ export async function getGitFileView(cwd: string, filePath: string): Promise<Git
   const headContent = await readHeadFile(cwd, filePath).catch(() => '');
 
   try {
-    const content = await readWorkingTreeFile(cwd, filePath);
+    const content = normalizeLineEndings(await readWorkingTreeFile(cwd, filePath));
     const linesCount = content.length > 0 ? content.split('\n').length : 0;
     return {
       content,
-      baseContent: isUntracked ? '' : headContent,
+      baseContent: isUntracked ? '' : normalizeLineEndings(headContent),
       addedLines: isUntracked ? Array.from({ length: linesCount }, (_, i) => i + 1) : addedLines,
       removedLines: isUntracked ? [] : removedLines,
       source: 'working_tree',
@@ -234,7 +238,7 @@ export async function getGitFileView(cwd: string, filePath: string): Promise<Git
   } catch {
     return {
       content: '',
-      baseContent: headContent || 'File content is unavailable.',
+      baseContent: normalizeLineEndings(headContent) || 'File content is unavailable.',
       addedLines,
       removedLines,
       source: 'head',
