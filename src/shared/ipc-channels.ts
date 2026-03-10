@@ -18,6 +18,9 @@ export const IPC = {
   GIT_SWITCH_BRANCH: 'git:switch-branch',
   GIT_LIST_CHANGES: 'git:list-changes',
   GIT_GET_DIFF: 'git:get-diff',
+  GIT_GET_FILE_VIEW: 'git:get-file-view',
+  GIT_ACCEPT_FILE: 'git:accept-file',
+  GIT_REJECT_FILE: 'git:reject-file',
 
   // Auth (CLI-based)
   AUTH_STATUS: 'auth:status',

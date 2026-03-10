@@ -19,6 +19,21 @@ export interface GitChangedFile {
   unstaged: string;
 }
 
+export interface GitFileView {
+  content: string;
+  changedLines: number[];
+  source: 'working_tree' | 'head';
+}
+
+function ensureInsideRepo(cwd: string, filePath: string): string {
+  const root = path.resolve(cwd);
+  const absolute = path.resolve(root, filePath);
+  if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) {
+    throw new Error('Invalid file path');
+  }
+  return absolute;
+}
+
 function runGit(cwd: string, args: string[]): Promise<GitExecResult> {
   return new Promise((resolve, reject) => {
     execFile('git', ['-C', cwd, ...args], { encoding: 'utf8' }, (error, stdout, stderr) => {
@@ -143,4 +158,98 @@ export async function getGitDiff(cwd: string, filePath: string): Promise<string>
   }
 
   return sections.join('\n\n');
+}
+
+function parseChangedLines(diff: string): number[] {
+  const changed = new Set<number>();
+  const lines = diff.split('\n');
+  let currentNewLine = 0;
+  let inHunk = false;
+
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      const match = /@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+      if (match) {
+        currentNewLine = Number(match[1]);
+        inHunk = true;
+      }
+      continue;
+    }
+
+    if (!inHunk) continue;
+
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      changed.add(currentNewLine);
+      currentNewLine += 1;
+      continue;
+    }
+
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      continue;
+    }
+
+    if (!line.startsWith('\\')) {
+      currentNewLine += 1;
+    }
+  }
+
+  return Array.from(changed).sort((a, b) => a - b);
+}
+
+async function readHeadFile(cwd: string, filePath: string): Promise<string> {
+  const result = await runGit(cwd, ['show', `HEAD:${filePath}`]);
+  return result.stdout;
+}
+
+async function readWorkingTreeFile(cwd: string, filePath: string): Promise<string> {
+  const absolute = ensureInsideRepo(cwd, filePath);
+  return fs.readFile(absolute, 'utf8');
+}
+
+export async function getGitFileView(cwd: string, filePath: string): Promise<GitFileView> {
+  const status = await runGit(cwd, ['status', '--porcelain', '--', filePath]).then((r) => r.stdout.trim()).catch(() => '');
+  const diff = await runGit(cwd, ['diff', '--no-color', '--', filePath]).then((r) => r.stdout).catch(() => '');
+  const isUntracked = status.startsWith('??');
+
+  try {
+    const content = await readWorkingTreeFile(cwd, filePath);
+    const linesCount = content.length > 0 ? content.split('\n').length : 0;
+    return {
+      content,
+      changedLines: isUntracked ? Array.from({ length: linesCount }, (_, i) => i + 1) : parseChangedLines(diff),
+      source: 'working_tree',
+    };
+  } catch {
+    const headContent = await readHeadFile(cwd, filePath).catch(() => '');
+    return {
+      content: headContent || 'File content is unavailable.',
+      changedLines: parseChangedLines(diff),
+      source: 'head',
+    };
+  }
+}
+
+export async function acceptGitFile(cwd: string, filePath: string): Promise<void> {
+  await runGit(cwd, ['add', '--', filePath]);
+}
+
+export async function rejectGitFile(cwd: string, filePath: string): Promise<void> {
+  const status = await runGit(cwd, ['status', '--porcelain', '--', filePath]).then((r) => r.stdout).catch(() => '');
+  const trimmed = status.trim();
+
+  if (trimmed.startsWith('??')) {
+    const absolute = ensureInsideRepo(cwd, filePath);
+    await fs.rm(absolute, { force: true, recursive: true });
+    return;
+  }
+
+  try {
+    await runGit(cwd, ['restore', '--staged', '--worktree', '--', filePath]);
+    return;
+  } catch {
+    // Fallback for older git setups.
+  }
+
+  await runGit(cwd, ['checkout', '--', filePath]);
+  await runGit(cwd, ['reset', 'HEAD', '--', filePath]).catch(() => '');
 }

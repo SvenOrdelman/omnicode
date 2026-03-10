@@ -195,7 +195,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
       </div>
 
       {/* Project + session list */}
-      <div className="flex-1 space-y-2 overflow-y-auto pr-0.5">
+      <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
         {recentProjects.length === 0 && (
           <button
             onClick={openProject}
@@ -239,7 +239,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               </button>
 
               {expanded && (
-                <div className="border-t border-border-subtle/50 px-2 pb-2.5 pt-2 space-y-0.5">
+                <div className="space-y-1 border-t border-border-subtle/50 px-2 pb-3 pt-2.5">
                   {sessions.length === 0 && (
                     <p className="px-2.5 py-2.5 text-xs text-text-muted italic">No threads yet</p>
                   )}
@@ -251,7 +251,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                         loadSession(session.id);
                         setActiveView('chat');
                       }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-[13px] transition-colors ${
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors ${
                         activeSession?.id === session.id
                           ? 'bg-accent/10 text-text-primary'
                           : 'text-text-secondary hover:bg-surface-3/80 hover:text-text-primary'
@@ -266,7 +266,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                   ))}
 
                   {sessions.length > 7 && (
-                    <button className="w-full px-2.5 py-1.5 text-left text-xs text-text-muted hover:text-text-secondary transition-colors">
+                    <button className="w-full px-2.5 py-2 text-left text-xs text-text-muted hover:text-text-secondary transition-colors">
                       Show {sessions.length - 7} more…
                     </button>
                   )}

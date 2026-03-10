@@ -1,5 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileCode2, FileSearch, GitCompareArrows, Loader2, RefreshCw, Search } from 'lucide-react';
+import {
+  Check,
+  FileCode2,
+  FileSearch,
+  GitCompareArrows,
+  Loader2,
+  RefreshCw,
+  Search,
+  Undo2,
+} from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
 import { ipc } from '../../lib/ipc-client';
 
@@ -10,6 +19,12 @@ interface ChangedFile {
   status: string;
   staged: string;
   unstaged: string;
+}
+
+interface GitFileView {
+  content: string;
+  changedLines: number[];
+  source: 'working_tree' | 'head';
 }
 
 function statusBadgeClass(status: string): string {
@@ -27,31 +42,34 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-function DiffView({ diff }: { diff: string }) {
-  const lines = diff.split('\n');
+function FileView({
+  content,
+  changedLines,
+}: {
+  content: string;
+  changedLines: number[];
+}) {
+  const changed = new Set(changedLines);
+  const lines = content.split('\n');
   return (
     <div className="overflow-auto rounded-xl border border-border-subtle bg-surface-0/70 p-2">
       <div className="font-mono text-[12px] leading-5">
         {lines.map((line, index) => {
           const key = `${index}-${line}`;
-          const isAdded = line.startsWith('+') && !line.startsWith('+++');
-          const isRemoved = line.startsWith('-') && !line.startsWith('---');
-          const isMeta = line.startsWith('@@') || line.startsWith('diff --git') || line.startsWith('###');
+          const lineNumber = index + 1;
+          const isChanged = changed.has(lineNumber);
 
           return (
             <div
               key={key}
-              className={`whitespace-pre px-1.5 ${
-                isAdded
-                  ? 'bg-success/8 text-success'
-                  : isRemoved
-                    ? 'bg-danger/8 text-danger'
-                    : isMeta
-                      ? 'text-accent'
-                      : 'text-text-secondary'
+              className={`grid grid-cols-[42px_1fr] gap-2 whitespace-pre px-1.5 ${
+                isChanged ? 'bg-warning/8 text-text-primary' : 'text-text-secondary'
               }`}
             >
-              {line || ' '}
+              <span className={`select-none text-right ${isChanged ? 'text-warning' : 'text-text-muted/80'}`}>
+                {lineNumber}
+              </span>
+              <span>{line || ' '}</span>
             </div>
           );
         })}
@@ -70,11 +88,12 @@ export function RightPane() {
   const [selectedChangeFile, setSelectedChangeFile] = useState<string | null>(null);
   const [filePreview, setFilePreview] = useState<string>('');
   const [filePreviewTruncated, setFilePreviewTruncated] = useState(false);
-  const [diffPreview, setDiffPreview] = useState<string>('');
+  const [fileView, setFileView] = useState<GitFileView | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingChanges, setLoadingChanges] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [loadingDiff, setLoadingDiff] = useState(false);
+  const [loadingFileView, setLoadingFileView] = useState(false);
+  const [changeActionPending, setChangeActionPending] = useState<'accept' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const filteredFiles = useMemo(() => {
@@ -128,7 +147,7 @@ export function RightPane() {
       setSelectedFile(null);
       setSelectedChangeFile(null);
       setFilePreview('');
-      setDiffPreview('');
+      setFileView(null);
       return;
     }
 
@@ -159,19 +178,54 @@ export function RightPane() {
 
   useEffect(() => {
     if (!currentProject || !selectedChangeFile) {
-      setDiffPreview('');
+      setFileView(null);
       return;
     }
 
-    setLoadingDiff(true);
+    setLoadingFileView(true);
     ipc()
-      .getGitDiff({ cwd: currentProject.path, filePath: selectedChangeFile })
-      .then((diff: string) => setDiffPreview(diff))
+      .getGitFileView({ cwd: currentProject.path, filePath: selectedChangeFile })
+      .then((view: GitFileView) => setFileView(view))
       .catch((err: unknown) => {
-        setDiffPreview(err instanceof Error ? err.message : 'Failed to load diff');
+        setError(err instanceof Error ? err.message : 'Failed to load file view');
+        setFileView(null);
       })
-      .finally(() => setLoadingDiff(false));
+      .finally(() => setLoadingFileView(false));
   }, [currentProject, selectedChangeFile]);
+
+  const runChangeAction = useCallback(
+    async (action: 'accept' | 'reject') => {
+      if (!currentProject || !selectedChangeFile) return;
+      setChangeActionPending(action);
+      setError(null);
+
+      try {
+        if (action === 'accept') {
+          await ipc().acceptGitFile({ cwd: currentProject.path, filePath: selectedChangeFile });
+        } else {
+          await ipc().rejectGitFile({ cwd: currentProject.path, filePath: selectedChangeFile });
+        }
+
+        const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
+        setChanges(updatedChanges);
+        if (!updatedChanges.some((change) => change.path === selectedChangeFile)) {
+          setSelectedChangeFile(updatedChanges[0]?.path ?? null);
+          setFileView(null);
+        } else {
+          const refreshedView: GitFileView = await ipc().getGitFileView({
+            cwd: currentProject.path,
+            filePath: selectedChangeFile,
+          });
+          setFileView(refreshedView);
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Git action failed');
+      } finally {
+        setChangeActionPending(null);
+      }
+    },
+    [currentProject, selectedChangeFile]
+  );
 
   return (
     <div className="flex h-full flex-col bg-surface-1/90">
@@ -312,15 +366,38 @@ export function RightPane() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs text-text-muted">{selectedChangeFile || 'No file selected'}</p>
-              {loadingDiff && <Loader2 size={14} className="animate-spin text-text-muted" />}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs text-text-muted">{selectedChangeFile || 'No file selected'}</p>
+                {fileView?.source === 'head' && (
+                  <p className="text-[11px] text-warning">Showing HEAD version (file removed in working tree)</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {loadingFileView && <Loader2 size={14} className="animate-spin text-text-muted" />}
+                <button
+                  onClick={() => runChangeAction('accept')}
+                  disabled={!selectedChangeFile || changeActionPending !== null}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary hover:border-success/50 hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {changeActionPending === 'accept' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                  Accept
+                </button>
+                <button
+                  onClick={() => runChangeAction('reject')}
+                  disabled={!selectedChangeFile || changeActionPending !== null}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {changeActionPending === 'reject' ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
+                  Reject
+                </button>
+              </div>
             </div>
-            {diffPreview ? (
-              <DiffView diff={diffPreview} />
+            {fileView ? (
+              <FileView content={fileView.content} changedLines={fileView.changedLines} />
             ) : (
               <p className="rounded-xl border border-border-subtle bg-surface-0/70 p-3 text-sm text-text-muted">
-                Select a changed file to view the diff.
+                Select a changed file to view the full file content.
               </p>
             )}
           </div>

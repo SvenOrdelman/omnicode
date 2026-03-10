@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Bot, ChevronDown, Plus, Send, Sparkles, Square } from 'lucide-react';
-import { useUIStore } from '../../stores/ui.store';
+import { Bot, ChevronDown, Send, Square } from 'lucide-react';
 import { ModeSelector } from '../common/ModeSelector';
 import { GitBranchSwitcher } from './GitBranchSwitcher';
 
@@ -11,7 +10,6 @@ interface ChatInputProps {
   disabled?: boolean;
 }
 
-const modeLabels = { code: 'Code', plan: 'Plan', ask: 'Ask' } as const;
 const claudeModels = [
   { id: 'claude-sonnet', label: 'Claude Sonnet 4' },
   { id: 'claude-opus', label: 'Claude Opus 4' },
@@ -24,7 +22,6 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   const [selectedModel, setSelectedModel] = useState(claudeModels[0]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
-  const agentMode = useUIStore((s) => s.agentMode);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -68,29 +65,25 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   }, [modelMenuOpen]);
 
   return (
-    <div className="relative z-20 bg-transparent px-8 pb-8 pt-3">
+    <div className="relative z-20 bg-transparent px-8 pb-6 pt-4">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="rounded-[34px] border border-border-default/85 bg-surface-1/80 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.38)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
-          <div className="flex items-end gap-3">
-            <button className="mb-1 inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border-default text-text-muted hover:border-border-strong hover:text-text-primary transition-colors">
-              <Plus size={16} />
-            </button>
-
+        <div className="rounded-[30px] border border-border-default/80 bg-surface-1/80 p-3 shadow-[0_14px_40px_rgba(0,0,0,0.34)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
+          <div className="flex items-end gap-2.5">
             <textarea
               ref={textareaRef}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Message Claude (${modeLabels[agentMode]} mode)...`}
+              placeholder="Message Claude..."
               rows={1}
               disabled={disabled}
-              className="flex-1 resize-none bg-transparent px-1.5 py-2 text-base text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
+              className="flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
             />
 
             {isStreaming ? (
               <button
                 onClick={onInterrupt}
-                className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white hover:bg-danger/90 transition-colors"
+                className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white hover:bg-danger/90 transition-colors"
               >
                 <Square size={15} />
               </button>
@@ -98,27 +91,27 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
               <button
                 onClick={handleSubmit}
                 disabled={!value.trim() || disabled}
-                className="mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover disabled:opacity-30 disabled:hover:bg-accent transition-colors"
+                className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover disabled:opacity-30 disabled:hover:bg-accent transition-colors"
               >
                 <Send size={15} />
               </button>
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-border-subtle/70 pt-2">
+            <div className="flex items-center gap-2">
               <div className="relative" ref={modelRef}>
                 <button
                   onClick={() => setModelMenuOpen((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-border-default px-3.5 py-2 text-sm font-medium text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors"
                 >
-                  <Bot size={14} />
+                  <Bot size={13} />
                   <span>{selectedModel.label}</span>
-                  <ChevronDown size={14} />
+                  <ChevronDown size={13} />
                 </button>
 
                 {modelMenuOpen && (
-                  <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-border-default bg-surface-2 p-1.5 shadow-xl">
+                  <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
                     {claudeModels.map((model) => (
                       <button
                         key={model.id}
@@ -126,7 +119,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
                           setSelectedModel(model);
                           setModelMenuOpen(false);
                         }}
-                        className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                           selectedModel.id === model.id
                             ? 'bg-accent-muted text-text-primary'
                             : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
@@ -144,11 +137,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:inline-flex items-center gap-1.5 text-sm text-text-muted">
-                <Sparkles size={14} />
-                Enter to send
-              </div>
+            <div className="flex items-center">
               <GitBranchSwitcher />
             </div>
           </div>

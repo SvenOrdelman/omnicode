@@ -25,7 +25,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarWidth: 300,
-  rightPaneWidth: 380,
+  rightPaneWidth: 440,
   sidebarCollapsed: false,
   terminalOpen: false,
   terminalHeight: 250,

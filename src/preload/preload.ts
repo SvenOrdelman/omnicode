@@ -41,6 +41,12 @@ const api = {
   listGitChanges: (cwd: string) => ipcRenderer.invoke(IPC.GIT_LIST_CHANGES, cwd),
   getGitDiff: (params: { cwd: string; filePath: string }) =>
     ipcRenderer.invoke(IPC.GIT_GET_DIFF, params),
+  getGitFileView: (params: { cwd: string; filePath: string }) =>
+    ipcRenderer.invoke(IPC.GIT_GET_FILE_VIEW, params),
+  acceptGitFile: (params: { cwd: string; filePath: string }) =>
+    ipcRenderer.invoke(IPC.GIT_ACCEPT_FILE, params),
+  rejectGitFile: (params: { cwd: string; filePath: string }) =>
+    ipcRenderer.invoke(IPC.GIT_REJECT_FILE, params),
 
   // Auth (CLI-based)
   getAuthStatus: () => ipcRenderer.invoke(IPC.AUTH_STATUS),

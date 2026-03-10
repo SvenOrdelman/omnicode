@@ -30,7 +30,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-7">
+    <div className="flex-1 overflow-y-auto px-8 pt-7 pb-5">
       <div className="mx-auto max-w-5xl space-y-3">
         {visibleMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />

@@ -38,7 +38,7 @@ export function AppLayout() {
 
   const handleRightPaneResize = useCallback(
     (delta: number) => {
-      setRightPaneWidth(Math.max(280, Math.min(720, rightPaneWidth - delta)));
+      setRightPaneWidth(Math.max(300, Math.min(980, rightPaneWidth - delta)));
     },
     [rightPaneWidth, setRightPaneWidth]
   );
@@ -55,14 +55,17 @@ export function AppLayout() {
     }
   };
 
-  const sidebarDisplayWidth = sidebarCollapsed ? 56 : sidebarWidth;
+  const sidebarDisplayWidth = sidebarCollapsed ? 72 : sidebarWidth;
 
   return (
-    <div className="flex h-screen w-screen gap-2 overflow-hidden bg-surface-0 p-3 text-text-primary">
+    <div
+      className="flex h-screen w-screen overflow-hidden bg-surface-0 text-text-primary"
+      style={{ padding: 8, gap: 8 }}
+    >
       {/* Sidebar */}
       <div
         style={{ width: sidebarDisplayWidth }}
-        className="flex-shrink-0 overflow-hidden rounded-2xl border border-border-subtle/70 transition-[width] duration-200 ease-in-out"
+        className="flex-shrink-0 overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40 transition-[width] duration-200 ease-in-out"
       >
         <Sidebar collapsed={sidebarCollapsed} />
       </div>
@@ -70,7 +73,7 @@ export function AppLayout() {
 
       <div className="flex min-w-0 flex-1">
         {/* Main content area */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/70">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40">
           {/* Center pane */}
           <div className="flex-1 overflow-hidden">{renderCenter()}</div>
 
@@ -90,7 +93,7 @@ export function AppLayout() {
         {/* Right explorer pane */}
         <div
           style={{ width: rightPaneWidth }}
-          className="flex-shrink-0 overflow-hidden rounded-2xl border border-border-subtle/70"
+          className="flex-shrink-0 overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40"
         >
           <RightPane />
         </div>

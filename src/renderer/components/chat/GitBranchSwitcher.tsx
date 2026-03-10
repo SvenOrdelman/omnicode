@@ -72,35 +72,35 @@ export function GitBranchSwitcher() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => hasRepo && setOpen((v) => !v)}
-        className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
           hasRepo
             ? 'border-border-default text-text-secondary hover:border-border-strong hover:text-text-primary'
             : 'cursor-not-allowed border-border-subtle text-text-muted'
         }`}
         disabled={!hasRepo}
       >
-        <GitBranch size={14} />
-        <span className="max-w-[190px] truncate">{currentBranch}</span>
-        {loading || switching ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
+        <GitBranch size={13} />
+        <span className="max-w-[150px] truncate">{currentBranch}</span>
+        {loading || switching ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-xl border border-border-default bg-surface-2 p-1.5 shadow-xl">
-          <div className="max-h-64 overflow-y-auto">
+        <div className="absolute bottom-full right-0 z-50 mb-2 w-56 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
+          <div className="max-h-56 overflow-y-auto">
             {branchState.branches.map((branch) => {
               const active = branch === branchState.current;
               return (
                 <button
                   key={branch}
                   onClick={() => handleSwitch(branch)}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                     active
                       ? 'bg-accent-muted text-text-primary'
                       : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                   }`}
                 >
                   <span className="truncate">{branch}</span>
-                  {active && <Check size={14} />}
+                  {active && <Check size={13} />}
                 </button>
               );
             })}
