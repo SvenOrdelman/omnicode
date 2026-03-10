@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-surface-0: #0b0c0f;
+  --color-surface-1: #101216;
+  --color-surface-2: #171a20;
+  --color-surface-3: #1f242c;
+
+  --color-border-subtle: #1e1e22;
+  --color-border-default: #27272a;
+  --color-border-strong: #3f3f46;
+
+  --color-accent: #7b83ff;
+  --color-accent-hover: #8d94ff;
+  --color-accent-muted: #7b83ff1f;
+
+  --color-text-primary: #e4e4e7;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #52525b;
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-surface-0);
+  background-image:
+    radial-gradient(900px 500px at 0% -10%, rgba(123, 131, 255, 0.1), transparent 60%),
+    radial-gradient(700px 420px at 100% 120%, rgba(60, 70, 120, 0.12), transparent 70%);
+  color: var(--color-text-primary);
+  font-family: 'Manrope', 'Avenir Next', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Glass utility */
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Dot pulse animation for streaming indicator */
+@keyframes dot-pulse {
+  0%, 80%, 100% { opacity: 0.2; }
+  40% { opacity: 1; }
+}
+
+.dot-pulse span {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+.dot-pulse span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot-pulse span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Prose overrides for dark theme */
+.prose pre {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.5rem;
+}
+
+.prose code {
+  color: #a78bfa;
+}
