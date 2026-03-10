@@ -4,6 +4,8 @@ export interface Session {
   title: string;
   provider: string;
   sdkSessionId?: string;
+  archived: boolean;
+  archivedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }

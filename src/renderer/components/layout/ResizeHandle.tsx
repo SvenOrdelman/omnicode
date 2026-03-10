@@ -6,17 +6,16 @@ interface ResizeHandleProps {
 }
 
 export function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
-  const startPos = useRef(0);
+  const dragStartPos = useRef(0);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      startPos.current = direction === 'horizontal' ? e.clientX : e.clientY;
+      dragStartPos.current = direction === 'horizontal' ? e.clientX : e.clientY;
 
       const onMouseMove = (e: MouseEvent) => {
         const current = direction === 'horizontal' ? e.clientX : e.clientY;
-        onResize(current - startPos.current);
-        startPos.current = current;
+        onResize(current - dragStartPos.current);
       };
 
       const onMouseUp = () => {
@@ -40,9 +39,10 @@ export function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
     <div
       className={`group relative z-10 flex-shrink-0 transition-colors duration-100 ${
         isH
-          ? 'w-2 cursor-col-resize'
-          : 'h-2 cursor-row-resize'
+          ? 'w-2.5 cursor-col-resize'
+          : 'h-2.5 cursor-row-resize'
       }`}
+      style={{ touchAction: 'none' }}
       onMouseDown={onMouseDown}
     >
       <div

@@ -91,12 +91,85 @@ html, body, #root {
 }
 
 /* Prose overrides for dark theme */
+.prose {
+  color: var(--color-text-primary);
+}
+
 .prose pre {
   background: var(--color-surface-2);
   border: 1px solid var(--color-border-default);
   border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
 }
 
 .prose code {
   color: #a78bfa;
+  word-break: break-word;
+}
+
+/* Code panel syntax highlighting (VS Code-like dark token colors) */
+.code-panel-code .hljs-comment,
+.code-panel-code .hljs-quote {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.code-panel-code .hljs-keyword,
+.code-panel-code .hljs-selector-tag,
+.code-panel-code .hljs-literal {
+  color: #c586c0;
+}
+
+.code-panel-code .hljs-string,
+.code-panel-code .hljs-regexp,
+.code-panel-code .hljs-symbol {
+  color: #ce9178;
+}
+
+.code-panel-code .hljs-number,
+.code-panel-code .hljs-attr,
+.code-panel-code .hljs-attribute {
+  color: #b5cea8;
+}
+
+.code-panel-code .hljs-title,
+.code-panel-code .hljs-title.function_,
+.code-panel-code .hljs-function .hljs-title {
+  color: #dcdcaa;
+}
+
+.code-panel-code .hljs-type,
+.code-panel-code .hljs-built_in,
+.code-panel-code .hljs-class .hljs-title {
+  color: #4ec9b0;
+}
+
+.code-panel-code .hljs-variable,
+.code-panel-code .hljs-params,
+.code-panel-code .hljs-property {
+  color: #9cdcfe;
+}
+
+.code-panel-code .hljs-meta,
+.code-panel-code .hljs-link {
+  color: #569cd6;
+}
+
+/* Monaco line highlights for git-style changes in edit mode */
+.omni-monaco-line-added {
+  background: rgba(34, 197, 94, 0.14);
+  border-left: 2px solid #22c55e;
+}
+
+.omni-monaco-line-removed {
+  background: rgba(239, 68, 68, 0.14);
+  border-left: 2px solid #ef4444;
 }

@@ -32,6 +32,8 @@ function initSchema(db: Database.Database): void {
       title TEXT NOT NULL DEFAULT 'New Chat',
       provider TEXT NOT NULL DEFAULT 'claude',
       sdk_session_id TEXT,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -51,6 +53,18 @@ function initSchema(db: Database.Database): void {
       value TEXT NOT NULL
     );
   `);
+
+  const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
+  const hasArchived = sessionColumns.some((column) => column.name === 'archived');
+  const hasArchivedAt = sessionColumns.some((column) => column.name === 'archived_at');
+
+  if (!hasArchived) {
+    db.exec('ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+  }
+
+  if (!hasArchivedAt) {
+    db.exec('ALTER TABLE sessions ADD COLUMN archived_at INTEGER');
+  }
 }
 
 export function closeDatabase(): void {

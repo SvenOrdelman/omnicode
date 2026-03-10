@@ -21,7 +21,9 @@ export interface GitChangedFile {
 
 export interface GitFileView {
   content: string;
-  changedLines: number[];
+  baseContent: string;
+  addedLines: number[];
+  removedLines: number[];
   source: 'working_tree' | 'head';
 }
 
@@ -160,8 +162,9 @@ export async function getGitDiff(cwd: string, filePath: string): Promise<string>
   return sections.join('\n\n');
 }
 
-function parseChangedLines(diff: string): number[] {
-  const changed = new Set<number>();
+function parseLineChanges(diff: string): { addedLines: number[]; removedLines: number[] } {
+  const added = new Set<number>();
+  const removed = new Set<number>();
   const lines = diff.split('\n');
   let currentNewLine = 0;
   let inHunk = false;
@@ -179,12 +182,14 @@ function parseChangedLines(diff: string): number[] {
     if (!inHunk) continue;
 
     if (line.startsWith('+') && !line.startsWith('+++')) {
-      changed.add(currentNewLine);
+      added.add(currentNewLine);
       currentNewLine += 1;
       continue;
     }
 
     if (line.startsWith('-') && !line.startsWith('---')) {
+      // Removed lines don't exist in the new file, so anchor them to the current new-file line.
+      removed.add(Math.max(1, currentNewLine));
       continue;
     }
 
@@ -193,7 +198,10 @@ function parseChangedLines(diff: string): number[] {
     }
   }
 
-  return Array.from(changed).sort((a, b) => a - b);
+  return {
+    addedLines: Array.from(added).sort((a, b) => a - b),
+    removedLines: Array.from(removed).sort((a, b) => a - b),
+  };
 }
 
 async function readHeadFile(cwd: string, filePath: string): Promise<string> {
@@ -210,20 +218,25 @@ export async function getGitFileView(cwd: string, filePath: string): Promise<Git
   const status = await runGit(cwd, ['status', '--porcelain', '--', filePath]).then((r) => r.stdout.trim()).catch(() => '');
   const diff = await runGit(cwd, ['diff', '--no-color', '--', filePath]).then((r) => r.stdout).catch(() => '');
   const isUntracked = status.startsWith('??');
+  const { addedLines, removedLines } = parseLineChanges(diff);
+  const headContent = await readHeadFile(cwd, filePath).catch(() => '');
 
   try {
     const content = await readWorkingTreeFile(cwd, filePath);
     const linesCount = content.length > 0 ? content.split('\n').length : 0;
     return {
       content,
-      changedLines: isUntracked ? Array.from({ length: linesCount }, (_, i) => i + 1) : parseChangedLines(diff),
+      baseContent: isUntracked ? '' : headContent,
+      addedLines: isUntracked ? Array.from({ length: linesCount }, (_, i) => i + 1) : addedLines,
+      removedLines: isUntracked ? [] : removedLines,
       source: 'working_tree',
     };
   } catch {
-    const headContent = await readHeadFile(cwd, filePath).catch(() => '');
     return {
-      content: headContent || 'File content is unavailable.',
-      changedLines: parseChangedLines(diff),
+      content: '',
+      baseContent: headContent || 'File content is unavailable.',
+      addedLines,
+      removedLines,
       source: 'head',
     };
   }

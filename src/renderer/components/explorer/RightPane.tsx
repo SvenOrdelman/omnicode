@@ -1,18 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Check,
-  FileCode2,
-  FileSearch,
-  GitCompareArrows,
-  Loader2,
-  RefreshCw,
-  Search,
-  Undo2,
-} from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DiffEditor as MonacoDiffEditor } from '@monaco-editor/react';
+import type { editor as MonacoEditor } from 'monaco-editor';
+import { FileCode2, Loader2, MessageSquarePlus, RefreshCw, Save } from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
 import { ipc } from '../../lib/ipc-client';
-
-type ExplorerTab = 'files' | 'changes';
+import { useChat } from '../../hooks/useChat';
+import { useUIStore } from '../../stores/ui.store';
 
 interface ChangedFile {
   path: string;
@@ -23,8 +16,61 @@ interface ChangedFile {
 
 interface GitFileView {
   content: string;
-  changedLines: number[];
+  baseContent: string;
+  addedLines: number[];
+  removedLines: number[];
   source: 'working_tree' | 'head';
+}
+
+const LANGUAGE_BY_EXTENSION: Record<string, string> = {
+  ts: 'typescript',
+  tsx: 'typescript',
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  json: 'json',
+  css: 'css',
+  scss: 'scss',
+  less: 'less',
+  html: 'xml',
+  htm: 'xml',
+  md: 'markdown',
+  py: 'python',
+  go: 'go',
+  rs: 'rust',
+  java: 'java',
+  kt: 'kotlin',
+  swift: 'swift',
+  c: 'c',
+  h: 'c',
+  cc: 'cpp',
+  cpp: 'cpp',
+  hpp: 'cpp',
+  cs: 'csharp',
+  php: 'php',
+  rb: 'ruby',
+  sh: 'bash',
+  zsh: 'bash',
+  bash: 'bash',
+  yml: 'yaml',
+  yaml: 'yaml',
+  toml: 'toml',
+  sql: 'sql',
+  xml: 'xml',
+  vue: 'xml',
+};
+
+function languageFromFilePath(filePath: string | null): string | undefined {
+  if (!filePath) return undefined;
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.d.ts')) return 'typescript';
+
+  const dotIndex = lower.lastIndexOf('.');
+  if (dotIndex === -1 || dotIndex === lower.length - 1) return undefined;
+
+  const extension = lower.slice(dotIndex + 1);
+  return LANGUAGE_BY_EXTENSION[extension];
 }
 
 function statusBadgeClass(status: string): string {
@@ -42,94 +88,100 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-function FileView({
-  content,
-  changedLines,
-}: {
-  content: string;
-  changedLines: number[];
-}) {
-  const changed = new Set(changedLines);
-  const lines = content.split('\n');
-  return (
-    <div className="overflow-auto rounded-xl border border-border-subtle bg-surface-0/70 p-2">
-      <div className="font-mono text-[12px] leading-5">
-        {lines.map((line, index) => {
-          const key = `${index}-${line}`;
-          const lineNumber = index + 1;
-          const isChanged = changed.has(lineNumber);
+function normalizeLineEndings(content: string): string {
+  return content.replace(/\r\n/g, '\n');
+}
 
-          return (
-            <div
-              key={key}
-              className={`grid grid-cols-[42px_1fr] gap-2 whitespace-pre px-1.5 ${
-                isChanged ? 'bg-warning/8 text-text-primary' : 'text-text-secondary'
-              }`}
-            >
-              <span className={`select-none text-right ${isChanged ? 'text-warning' : 'text-text-muted/80'}`}>
-                {lineNumber}
-              </span>
-              <span>{line || ' '}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function countChangedLines(previousContent: string, nextContent: string): number {
+  const previousLines = normalizeLineEndings(previousContent).split('\n');
+  const nextLines = normalizeLineEndings(nextContent).split('\n');
+  const maxLines = Math.max(previousLines.length, nextLines.length);
+
+  let changed = 0;
+  for (let index = 0; index < maxLines; index += 1) {
+    if ((previousLines[index] ?? '') !== (nextLines[index] ?? '')) {
+      changed += 1;
+    }
+  }
+
+  return changed;
+}
+
+function extractLineContext(content: string, lineNumber: number): {
+  lineText: string;
+  contextSnippet: string;
+  startLine: number;
+  endLine: number;
+} {
+  const lines = normalizeLineEndings(content).split('\n');
+  if (lines.length === 0) {
+    return {
+      lineText: '',
+      contextSnippet: '(no context available)',
+      startLine: 1,
+      endLine: 1,
+    };
+  }
+
+  const safeLine = Math.min(Math.max(lineNumber, 1), lines.length);
+  const startLine = Math.max(1, safeLine - 2);
+  const endLine = Math.min(lines.length, safeLine + 2);
+  const contextSnippet = lines
+    .slice(startLine - 1, endLine)
+    .map((line, index) => {
+      const currentLine = startLine + index;
+      const marker = currentLine === safeLine ? '>' : ' ';
+      return `${marker} ${String(currentLine).padStart(4, ' ')} | ${line}`;
+    })
+    .join('\n');
+
+  return {
+    lineText: lines[safeLine - 1] ?? '',
+    contextSnippet,
+    startLine,
+    endLine,
+  };
 }
 
 export function RightPane() {
   const currentProject = useProjectStore((s) => s.currentProject);
-  const [tab, setTab] = useState<ExplorerTab>('files');
-  const [fileQuery, setFileQuery] = useState('');
-  const [files, setFiles] = useState<string[]>([]);
+  const { sendPrompt, appendLocalMessage } = useChat();
+  const setActiveView = useUIStore((s) => s.setActiveView);
+
   const [changes, setChanges] = useState<ChangedFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedChangeFile, setSelectedChangeFile] = useState<string | null>(null);
-  const [filePreview, setFilePreview] = useState<string>('');
-  const [filePreviewTruncated, setFilePreviewTruncated] = useState(false);
   const [fileView, setFileView] = useState<GitFileView | null>(null);
-  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [editorDraft, setEditorDraft] = useState('');
+  const [editorBaseContent, setEditorBaseContent] = useState('');
   const [loadingChanges, setLoadingChanges] = useState(false);
-  const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingFileView, setLoadingFileView] = useState(false);
-  const [changeActionPending, setChangeActionPending] = useState<'accept' | 'reject' | null>(null);
+  const [savingFileEdit, setSavingFileEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const filteredFiles = useMemo(() => {
-    const query = fileQuery.trim().toLowerCase();
-    if (!query) return files;
-    return files.filter((file) => file.toLowerCase().includes(query));
-  }, [files, fileQuery]);
+  const diffEditorRef = useRef<MonacoEditor.IStandaloneDiffEditor | null>(null);
+  const modifiedContentSubscriptionRef = useRef<{ dispose: () => void } | null>(null);
+  const saveFileEditRef = useRef<() => void>(() => undefined);
 
-  const loadFiles = useCallback(async () => {
-    if (!currentProject) return;
-    setLoadingFiles(true);
-    setError(null);
-    try {
-      const projectFiles: string[] = await ipc().listProjectFiles(currentProject.path);
-      setFiles(projectFiles);
-      setSelectedFile((prev) => {
-        if (prev && projectFiles.includes(prev)) return prev;
-        return projectFiles[0] ?? null;
-      });
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load files');
-      setFiles([]);
-    } finally {
-      setLoadingFiles(false);
-    }
-  }, [currentProject]);
+  const canEditSelectedFile = useMemo(
+    () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree' && !savingFileEdit),
+    [fileView, savingFileEdit, selectedChangeFile]
+  );
+  const hasUnsavedEdit = canEditSelectedFile && editorDraft !== editorBaseContent;
+  const lockNavigation = hasUnsavedEdit || savingFileEdit;
+  const selectedLanguage = languageFromFilePath(selectedChangeFile);
 
   const loadChanges = useCallback(async () => {
     if (!currentProject) return;
     setLoadingChanges(true);
     setError(null);
+
     try {
       const projectChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
       setChanges(projectChanges);
-      setSelectedChangeFile((prev) => {
-        if (prev && projectChanges.some((change) => change.path === prev)) return prev;
+      setSelectedChangeFile((previous) => {
+        if (previous && projectChanges.some((change) => change.path === previous)) {
+          return previous;
+        }
         return projectChanges[0]?.path ?? null;
       });
     } catch (err: unknown) {
@@ -140,202 +192,251 @@ export function RightPane() {
     }
   }, [currentProject]);
 
+  const loadGitFileView = useCallback(async (cwd: string, filePath: string): Promise<GitFileView> => {
+    try {
+      return await ipc().getGitFileView({ cwd, filePath });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("No handler registered for 'git:get-file-view'")) {
+        throw err;
+      }
+
+      const fallback = await ipc().getGitDiff({ cwd, filePath }).catch(() => 'Diff preview is unavailable.');
+      return {
+        content: fallback,
+        baseContent: '',
+        addedLines: [],
+        removedLines: [],
+        source: 'working_tree',
+      };
+    }
+  }, []);
+
   useEffect(() => {
     if (!currentProject) {
-      setFiles([]);
       setChanges([]);
-      setSelectedFile(null);
       setSelectedChangeFile(null);
-      setFilePreview('');
       setFileView(null);
+      setEditorDraft('');
+      setEditorBaseContent('');
       return;
     }
 
-    loadFiles().catch(() => undefined);
     loadChanges().catch(() => undefined);
-  }, [currentProject, loadFiles, loadChanges]);
-
-  useEffect(() => {
-    if (!currentProject || !selectedFile) {
-      setFilePreview('');
-      setFilePreviewTruncated(false);
-      return;
-    }
-
-    setLoadingPreview(true);
-    ipc()
-      .readProjectFile({ cwd: currentProject.path, filePath: selectedFile })
-      .then((result: { content: string; truncated: boolean }) => {
-        setFilePreview(result.content);
-        setFilePreviewTruncated(result.truncated);
-      })
-      .catch((err: unknown) => {
-        setFilePreview(err instanceof Error ? err.message : 'Failed to open file');
-        setFilePreviewTruncated(false);
-      })
-      .finally(() => setLoadingPreview(false));
-  }, [currentProject, selectedFile]);
+  }, [currentProject, loadChanges]);
 
   useEffect(() => {
     if (!currentProject || !selectedChangeFile) {
       setFileView(null);
+      setEditorDraft('');
+      setEditorBaseContent('');
       return;
     }
 
     setLoadingFileView(true);
-    ipc()
-      .getGitFileView({ cwd: currentProject.path, filePath: selectedChangeFile })
-      .then((view: GitFileView) => setFileView(view))
+    loadGitFileView(currentProject.path, selectedChangeFile)
+      .then((view: GitFileView) => {
+        setFileView(view);
+        setEditorDraft(view.content);
+        setEditorBaseContent(view.content);
+      })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Failed to load file view');
         setFileView(null);
+        setEditorDraft('');
+        setEditorBaseContent('');
       })
       .finally(() => setLoadingFileView(false));
-  }, [currentProject, selectedChangeFile]);
+  }, [currentProject, loadGitFileView, selectedChangeFile]);
 
-  const runChangeAction = useCallback(
-    async (action: 'accept' | 'reject') => {
-      if (!currentProject || !selectedChangeFile) return;
-      setChangeActionPending(action);
-      setError(null);
+  const refreshChangesAndFile = useCallback(
+    async (preferredFilePath: string | null) => {
+      if (!currentProject) return;
 
-      try {
-        if (action === 'accept') {
-          await ipc().acceptGitFile({ cwd: currentProject.path, filePath: selectedChangeFile });
-        } else {
-          await ipc().rejectGitFile({ cwd: currentProject.path, filePath: selectedChangeFile });
-        }
+      const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
+      setChanges(updatedChanges);
 
-        const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
-        setChanges(updatedChanges);
-        if (!updatedChanges.some((change) => change.path === selectedChangeFile)) {
-          setSelectedChangeFile(updatedChanges[0]?.path ?? null);
-          setFileView(null);
-        } else {
-          const refreshedView: GitFileView = await ipc().getGitFileView({
-            cwd: currentProject.path,
-            filePath: selectedChangeFile,
-          });
-          setFileView(refreshedView);
-        }
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Git action failed');
-      } finally {
-        setChangeActionPending(null);
+      const nextSelected =
+        preferredFilePath && updatedChanges.some((change) => change.path === preferredFilePath)
+          ? preferredFilePath
+          : updatedChanges[0]?.path ?? null;
+
+      setSelectedChangeFile(nextSelected);
+
+      if (nextSelected) {
+        const refreshedView: GitFileView = await loadGitFileView(currentProject.path, nextSelected);
+        setFileView(refreshedView);
+        setEditorDraft(refreshedView.content);
+        setEditorBaseContent(refreshedView.content);
+      } else {
+        setFileView(null);
+        setEditorDraft('');
+        setEditorBaseContent('');
       }
     },
-    [currentProject, selectedChangeFile]
+    [currentProject, loadGitFileView]
+  );
+
+  const selectChangeFile = useCallback(
+    (filePath: string) => {
+      if (filePath === selectedChangeFile) return;
+      if (hasUnsavedEdit) {
+        const shouldDiscard = window.confirm('Discard unsaved edits before switching files?');
+        if (!shouldDiscard) return;
+      }
+
+      setSelectedChangeFile(filePath);
+    },
+    [hasUnsavedEdit, selectedChangeFile]
+  );
+
+  const sendLineCommentToChat = useCallback(
+    (lineNumber: number, sourceContent: string) => {
+      if (!selectedChangeFile) return;
+
+      const comment = window.prompt(`Comment for ${selectedChangeFile}:${lineNumber}`);
+      if (!comment || !comment.trim()) return;
+
+      const { lineText, contextSnippet, startLine, endLine } = extractLineContext(sourceContent, lineNumber);
+      setActiveView('chat');
+      const prompt = [
+        `Please apply a change in file \`${selectedChangeFile}\` near line ${lineNumber}.`,
+        `Target line content: ${lineText || '(empty line)'}`,
+        `Context lines ${startLine}-${endLine} (the line prefixed with ">" is the target):`,
+        '```text',
+        contextSnippet,
+        '```',
+        `Requested change: ${comment.trim()}`,
+        'Update the file accordingly and summarize exactly what changed.',
+      ].join('\n');
+      sendPrompt(prompt).catch(() => undefined);
+    },
+    [selectedChangeFile, sendPrompt, setActiveView]
+  );
+
+  const commentCurrentEditorLine = useCallback(() => {
+    if (!selectedChangeFile) return;
+    const modifiedEditor = diffEditorRef.current?.getModifiedEditor();
+    const activeLine = modifiedEditor?.getPosition()?.lineNumber ?? 1;
+    sendLineCommentToChat(activeLine, editorDraft || fileView?.content || '');
+  }, [editorDraft, fileView?.content, selectedChangeFile, sendLineCommentToChat]);
+
+  const saveFullFileEdit = useCallback(async () => {
+    if (!currentProject || !selectedChangeFile || !canEditSelectedFile || !hasUnsavedEdit) return;
+
+    const previousContent = editorBaseContent;
+    const nextContent = editorDraft;
+    setSavingFileEdit(true);
+    setError(null);
+
+    try {
+      await ipc().writeProjectFile({
+        cwd: currentProject.path,
+        filePath: selectedChangeFile,
+        content: nextContent,
+      });
+
+      const changedLines = countChangedLines(previousContent, nextContent);
+      await appendLocalMessage(
+        `Saved edits in \`${selectedChangeFile}\` (${changedLines} line${changedLines === 1 ? '' : 's'} changed).`
+      );
+
+      await refreshChangesAndFile(selectedChangeFile);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save file edits');
+    } finally {
+      setSavingFileEdit(false);
+    }
+  }, [
+    appendLocalMessage,
+    canEditSelectedFile,
+    currentProject,
+    editorBaseContent,
+    editorDraft,
+    hasUnsavedEdit,
+    refreshChangesAndFile,
+    selectedChangeFile,
+  ]);
+
+  useEffect(() => {
+    saveFileEditRef.current = () => {
+      saveFullFileEdit().catch(() => undefined);
+    };
+  }, [saveFullFileEdit]);
+
+  const handleDiffEditorMount = useCallback(
+    (editor: MonacoEditor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor')) => {
+      diffEditorRef.current = editor;
+      const modifiedEditor = editor.getModifiedEditor();
+      modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        saveFileEditRef.current();
+      });
+      modifiedContentSubscriptionRef.current?.dispose();
+      modifiedContentSubscriptionRef.current = modifiedEditor.onDidChangeModelContent(() => {
+        setEditorDraft(modifiedEditor.getValue());
+      });
+    },
+    []
+  );
+
+  useEffect(
+    () => () => {
+      modifiedContentSubscriptionRef.current?.dispose();
+      modifiedContentSubscriptionRef.current = null;
+      diffEditorRef.current = null;
+    },
+    []
+  );
+
+  const diffEditorOptions = useMemo<MonacoEditor.IStandaloneDiffEditorConstructionOptions>(
+    () => ({
+      automaticLayout: true,
+      renderSideBySide: false,
+      originalEditable: false,
+      readOnly: !canEditSelectedFile,
+      minimap: { enabled: false },
+      fontSize: 13,
+      lineHeight: 20,
+      scrollBeyondLastLine: false,
+      smoothScrolling: true,
+      tabSize: 2,
+      insertSpaces: true,
+      ignoreTrimWhitespace: false,
+      renderIndicators: true,
+      enableSplitViewResizing: true,
+      fontFamily: `'SF Mono', Menlo, Monaco, 'Cascadia Mono', monospace`,
+    }),
+    [canEditSelectedFile]
   );
 
   return (
     <div className="flex h-full flex-col bg-surface-1/90">
       <div className="border-b border-border-subtle px-3 py-2.5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Explorer</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Changes</p>
           <button
             onClick={() => {
-              if (tab === 'files') {
-                loadFiles().catch(() => undefined);
-                return;
-              }
+              if (lockNavigation) return;
               loadChanges().catch(() => undefined);
             }}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors"
+            disabled={lockNavigation}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
           >
             <RefreshCw size={12} />
             Refresh
-          </button>
-        </div>
-
-        <div className="mt-2 inline-flex rounded-lg border border-border-default bg-surface-2 p-1">
-          <button
-            onClick={() => setTab('files')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              tab === 'files' ? 'bg-surface-3 text-text-primary' : 'text-text-muted hover:text-text-secondary'
-            }`}
-          >
-            <FileSearch size={13} />
-            Files
-          </button>
-          <button
-            onClick={() => setTab('changes')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              tab === 'changes' ? 'bg-surface-3 text-text-primary' : 'text-text-muted hover:text-text-secondary'
-            }`}
-          >
-            <GitCompareArrows size={13} />
-            Changes
           </button>
         </div>
       </div>
 
       {!currentProject && (
         <div className="m-3 rounded-xl border border-border-subtle bg-surface-0/70 p-3 text-sm text-text-secondary">
-          Open a project to browse files and view diffs.
+          Open a project to view git changes.
         </div>
       )}
 
-      {currentProject && tab === 'files' && (
+      {currentProject && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-border-subtle p-3">
-            <label className="relative block">
-              <Search size={14} className="pointer-events-none absolute left-3 top-2.5 text-text-muted" />
-              <input
-                value={fileQuery}
-                onChange={(event) => setFileQuery(event.target.value)}
-                placeholder="Search files in current project"
-                className="w-full rounded-lg border border-border-default bg-surface-0 py-2 pl-9 pr-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-strong"
-              />
-            </label>
-          </div>
-
-          <div className="min-h-0 overflow-y-auto border-b border-border-subtle">
-            {loadingFiles && (
-              <div className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
-                <Loader2 size={14} className="animate-spin" />
-                Loading files...
-              </div>
-            )}
-            {!loadingFiles && filteredFiles.length === 0 && (
-              <p className="px-3 py-2 text-sm text-text-muted">No files found.</p>
-            )}
-            {!loadingFiles &&
-              filteredFiles.slice(0, 400).map((filePath) => (
-                <button
-                  key={filePath}
-                  onClick={() => setSelectedFile(filePath)}
-                  className={`block w-full truncate px-3 py-1.5 text-left text-sm transition-colors ${
-                    selectedFile === filePath
-                      ? 'bg-accent-muted text-text-primary'
-                      : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
-                  }`}
-                  title={filePath}
-                >
-                  {filePath}
-                </button>
-              ))}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs text-text-muted">{selectedFile || 'No file selected'}</p>
-              {loadingPreview && <Loader2 size={14} className="animate-spin text-text-muted" />}
-            </div>
-            <div className="overflow-auto rounded-xl border border-border-subtle bg-surface-0/70 p-2">
-              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-text-secondary">
-                {filePreview || 'Select a file to preview content.'}
-              </pre>
-            </div>
-            {filePreviewTruncated && (
-              <p className="mt-2 text-xs text-text-muted">Preview truncated to the first 512KB.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {currentProject && tab === 'changes' && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 overflow-y-auto border-b border-border-subtle">
+          <div className="max-h-[42%] min-h-[150px] shrink-0 overflow-y-auto border-b border-border-subtle">
             {loadingChanges && (
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
                 <Loader2 size={14} className="animate-spin" />
@@ -349,10 +450,10 @@ export function RightPane() {
               changes.map((change) => (
                 <button
                   key={change.path}
-                  onClick={() => setSelectedChangeFile(change.path)}
+                  onClick={() => selectChangeFile(change.path)}
                   className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
                     selectedChangeFile === change.path
-                      ? 'bg-accent-muted text-text-primary'
+                      ? 'bg-accent-muted/60 text-text-primary'
                       : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                   }`}
                 >
@@ -365,41 +466,64 @@ export function RightPane() {
               ))}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-xs text-text-muted">{selectedChangeFile || 'No file selected'}</p>
-                {fileView?.source === 'head' && (
-                  <p className="text-[11px] text-warning">Showing HEAD version (file removed in working tree)</p>
+          <div className="min-h-0 flex-1 p-3">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-text-muted">{selectedChangeFile || 'No file selected'}</p>
+                  {fileView?.source === 'head' && (
+                    <p className="text-[11px] text-warning">File is deleted in working tree (read-only diff view)</p>
+                  )}
+                  {hasUnsavedEdit && <p className="text-[11px] text-warning">Unsaved file edits</p>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={commentCurrentEditorLine}
+                    disabled={!canEditSelectedFile || !fileView || savingFileEdit}
+                    className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                    title="Send current line context to chat"
+                  >
+                    <MessageSquarePlus size={12} />
+                    Comment Line
+                  </button>
+                  <button
+                    onClick={() => saveFullFileEdit().catch(() => undefined)}
+                    disabled={!hasUnsavedEdit || savingFileEdit || !canEditSelectedFile}
+                    className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-success/55 hover:text-success disabled:cursor-not-allowed disabled:opacity-45"
+                    title="Save file (Ctrl/Cmd+S)"
+                  >
+                    {savingFileEdit ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                    Save
+                  </button>
+                  {loadingFileView && <Loader2 size={14} className="animate-spin text-text-muted" />}
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1">
+                {fileView ? (
+                  <div className="h-full overflow-hidden rounded-xl border border-border-subtle bg-surface-0/80">
+                    <MonacoDiffEditor
+                      key={selectedChangeFile || 'diff-editor'}
+                      original={fileView.baseContent}
+                      modified={editorDraft}
+                      language={selectedLanguage}
+                      theme="vs-dark"
+                      options={diffEditorOptions}
+                      onMount={handleDiffEditorMount}
+                      loading={
+                        <div className="flex h-full items-center justify-center text-sm text-text-muted">
+                          Loading editor...
+                        </div>
+                      }
+                    />
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-border-subtle bg-surface-0/70 p-3 text-sm text-text-muted">
+                    Select a changed file to view and edit its diff.
+                  </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                {loadingFileView && <Loader2 size={14} className="animate-spin text-text-muted" />}
-                <button
-                  onClick={() => runChangeAction('accept')}
-                  disabled={!selectedChangeFile || changeActionPending !== null}
-                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary hover:border-success/50 hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {changeActionPending === 'accept' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                  Accept
-                </button>
-                <button
-                  onClick={() => runChangeAction('reject')}
-                  disabled={!selectedChangeFile || changeActionPending !== null}
-                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary hover:border-danger/50 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {changeActionPending === 'reject' ? <Loader2 size={12} className="animate-spin" /> : <Undo2 size={12} />}
-                  Reject
-                </button>
-              </div>
             </div>
-            {fileView ? (
-              <FileView content={fileView.content} changedLines={fileView.changedLines} />
-            ) : (
-              <p className="rounded-xl border border-border-subtle bg-surface-0/70 p-3 text-sm text-text-muted">
-                Select a changed file to view the full file content.
-              </p>
-            )}
           </div>
         </div>
       )}

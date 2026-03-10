@@ -14,7 +14,7 @@ function renderContent(content: ProviderContent) {
   switch (content.type) {
     case 'text':
       return (
-        <div className="prose prose-invert prose-sm max-w-none">
+        <div className="prose prose-invert prose-sm max-w-none break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:overflow-x-auto">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -47,7 +47,7 @@ function renderContent(content: ProviderContent) {
             <Wrench size={13} className="text-accent" />
             <span className="text-xs font-medium text-accent">{content.toolName}</span>
           </div>
-          <pre className="p-3 text-xs text-text-secondary overflow-x-auto">
+          <pre className="max-w-full overflow-x-auto p-3 text-xs text-text-secondary">
             {JSON.stringify(content.input, null, 2)}
           </pre>
         </div>
@@ -68,7 +68,7 @@ function renderContent(content: ProviderContent) {
               <span className="text-xs font-medium text-danger">Error</span>
             </div>
           )}
-          <pre className="p-3 text-xs text-text-secondary overflow-x-auto">{content.output}</pre>
+          <pre className="max-w-full overflow-x-auto p-3 text-xs text-text-secondary">{content.output}</pre>
         </div>
       );
 
@@ -94,20 +94,20 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && <Avatar role="assistant" />}
 
       <div
-        className={`min-w-0 max-w-[min(820px,86%)] rounded-2xl border px-4 py-3 shadow-[0_8px_26px_rgba(0,0,0,0.22)] ${
+        className={`min-w-0 max-w-[min(860px,88%)] overflow-hidden rounded-2xl border px-5 py-4 shadow-[0_8px_26px_rgba(0,0,0,0.22)] ${
           isUser
             ? 'border-accent/35 bg-gradient-to-br from-accent/14 to-accent/8'
             : 'border-border-default/80 bg-surface-1/90 backdrop-blur-sm'
         }`}
       >
-        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
           {isUser ? 'You' : 'Claude'}
         </div>
-        <div>
+        <div className="space-y-3 px-0.5">
           {message.content.map((c, i) => (
             <React.Fragment key={i}>{renderContent(c)}</React.Fragment>
           ))}

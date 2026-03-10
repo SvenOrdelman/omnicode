@@ -3,11 +3,11 @@ import { useChat } from '../../hooks/useChat';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { ApprovalDialog } from '../approval/ApprovalDialog';
-import { FolderOpen, GitCommitHorizontal } from 'lucide-react';
+import { Archive } from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
 
 export function ChatView() {
-  const { messages, status, error, sendPrompt, interrupt, activeSession } = useChat();
+  const { messages, status, error, sendPrompt, interrupt, activeSession, archiveSession } = useChat();
   const currentProject = useProjectStore((s) => s.currentProject);
   const isStreaming = status === 'streaming';
 
@@ -20,13 +20,16 @@ export function ChatView() {
           {activeSession?.title || 'New thread'}
         </h2>
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
-          <button className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-2.5 py-1 text-xs text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors">
-            <FolderOpen size={12} />
-            Open
-          </button>
-          <button className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-2.5 py-1 text-xs text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors">
-            <GitCommitHorizontal size={12} />
-            Commit
+          <button
+            onClick={() => {
+              if (!activeSession) return;
+              archiveSession(activeSession.id).catch(() => undefined);
+            }}
+            disabled={!activeSession}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-1 px-2.5 py-1 text-xs text-text-secondary hover:border-border-strong hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Archive size={12} />
+            Archive
           </button>
           <span className="text-xs font-medium text-success">{currentProject ? currentProject.name : ''}</span>
         </div>

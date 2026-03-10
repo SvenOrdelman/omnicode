@@ -14,6 +14,8 @@ export const IPC = {
   PROJECT_SET_CURRENT: 'project:set-current',
   EXPLORER_LIST_FILES: 'explorer:list-files',
   EXPLORER_READ_FILE: 'explorer:read-file',
+  EXPLORER_WRITE_FILE: 'explorer:write-file',
+  EXPLORER_SEARCH_CONTENT: 'explorer:search-content',
   GIT_LIST_BRANCHES: 'git:list-branches',
   GIT_SWITCH_BRANCH: 'git:switch-branch',
   GIT_LIST_CHANGES: 'git:list-changes',
@@ -33,6 +35,8 @@ export const IPC = {
   SESSION_GET: 'session:get',
   SESSION_DELETE: 'session:delete',
   SESSION_CREATE: 'session:create',
+  SESSION_ADD_MESSAGE: 'session:add-message',
+  SESSION_ARCHIVE: 'session:archive',
 
   // Terminal
   TERMINAL_CREATE: 'terminal:create',

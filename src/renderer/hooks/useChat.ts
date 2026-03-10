@@ -9,6 +9,13 @@ let unsubscribeStreamHandlers: (() => void) | null = null;
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const MAX_TITLE_LENGTH = 72;
 
+interface StoredSessionMessage {
+  id: string;
+  role: ProviderMessage['role'];
+  content: string;
+  timestamp: number;
+}
+
 function deriveTitleFromContent(content: ProviderContent[]): string {
   const text = content
     .map((block) => {
@@ -36,8 +43,30 @@ export function useChat() {
     setError,
     clearChat,
     setMessages,
+    addMessage,
   } = useChatStore();
   const currentProject = useProjectStore((s) => s.currentProject);
+
+  const parseStoredMessage = useCallback(
+    (m: StoredSessionMessage): ProviderMessage => ({
+      id: m.id,
+      role: m.role,
+      content: JSON.parse(m.content),
+      timestamp: m.timestamp,
+    }),
+    []
+  );
+
+  const ensureTargetSession = useCallback(async () => {
+    if (!currentProject) return null;
+    if (activeSession && activeSession.projectId === currentProject.id) return activeSession;
+
+    const session = await ipc().createSession(currentProject.id);
+    if (!session) return null;
+    setActiveSession(session);
+    clearChat();
+    return session;
+  }, [activeSession, clearChat, currentProject, setActiveSession]);
 
   useEffect(() => {
     streamSubscriberCount += 1;
@@ -95,15 +124,8 @@ export function useChat() {
       setError(null);
 
       try {
-        let targetSession = activeSession;
-        if (!targetSession || targetSession.projectId !== currentProject.id) {
-          targetSession = await ipc().createSession(currentProject.id);
-          if (!targetSession) {
-            throw new Error('Could not create a chat session');
-          }
-          setActiveSession(targetSession);
-          clearChat();
-        }
+        const targetSession = await ensureTargetSession();
+        if (!targetSession) throw new Error('Could not create a chat session');
 
         await ipc().sendPrompt({
           sessionId: targetSession.id,
@@ -117,7 +139,7 @@ export function useChat() {
         setError(errorMessage);
       }
     },
-    [activeSession, currentProject, setStatus, setError, setActiveSession, clearChat]
+    [currentProject, ensureTargetSession, setStatus, setError]
   );
 
   const interrupt = useCallback(async () => {
@@ -133,19 +155,11 @@ export function useChat() {
 
       setActiveSession(result.session);
 
-      // Parse stored messages
-      const parsed: ProviderMessage[] = result.messages.map(
-        (m: { id: string; role: ProviderMessage['role']; content: string; timestamp: number }) => ({
-          id: m.id,
-          role: m.role,
-          content: JSON.parse(m.content),
-          timestamp: m.timestamp,
-        })
-      );
+      const parsed: ProviderMessage[] = result.messages.map(parseStoredMessage);
       setMessages(parsed);
       setStatus('idle');
     },
-    [setActiveSession, setMessages, setStatus]
+    [parseStoredMessage, setActiveSession, setMessages, setStatus]
   );
 
   const newChat = useCallback(async () => {
@@ -154,6 +168,41 @@ export function useChat() {
     setActiveSession(session);
     clearChat();
   }, [currentProject, setActiveSession, clearChat]);
+
+  const appendLocalMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+      const targetSession = await ensureTargetSession();
+      if (!targetSession) return;
+
+      const content: ProviderContent[] = [{ type: 'text', text }];
+      const result = await ipc().addSessionMessage({
+        sessionId: targetSession.id,
+        role: 'user',
+        content,
+      });
+
+      if (result?.session) {
+        setActiveSession(result.session);
+      }
+
+      if (result?.message) {
+        addMessage(parseStoredMessage(result.message));
+      }
+    },
+    [addMessage, ensureTargetSession, parseStoredMessage, setActiveSession]
+  );
+
+  const archiveSession = useCallback(
+    async (sessionId: string) => {
+      await ipc().archiveSession({ sessionId, archived: true });
+      if (activeSession?.id === sessionId) {
+        setActiveSession(null);
+        clearChat();
+      }
+    },
+    [activeSession?.id, clearChat, setActiveSession]
+  );
 
   return {
     activeSession,
@@ -164,5 +213,7 @@ export function useChat() {
     interrupt,
     loadSession,
     newChat,
+    appendLocalMessage,
+    archiveSession,
   };
 }

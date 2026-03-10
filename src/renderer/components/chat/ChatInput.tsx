@@ -65,10 +65,10 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   }, [modelMenuOpen]);
 
   return (
-    <div className="relative z-20 bg-transparent px-8 pb-6 pt-4">
+    <div className="relative z-20 bg-transparent px-6 pb-6 pt-4 sm:px-8">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="rounded-[30px] border border-border-default/80 bg-surface-1/80 p-3 shadow-[0_14px_40px_rgba(0,0,0,0.34)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
-          <div className="flex items-end gap-2.5">
+        <div className="overflow-hidden rounded-[30px] border border-border-default/80 bg-surface-1/85 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.34)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
+          <div className="flex items-end gap-2.5 rounded-2xl border border-border-subtle/70 bg-surface-0/50 px-3.5 py-2.5">
             <textarea
               ref={textareaRef}
               value={value}
@@ -77,7 +77,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
               placeholder="Message Claude..."
               rows={1}
               disabled={disabled}
-              className="flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
+              className="min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
             />
 
             {isStreaming ? (
@@ -98,7 +98,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
             )}
           </div>
 
-          <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-border-subtle/70 pt-2">
+          <div className="mt-3 flex items-center justify-between gap-3 border-t border-border-subtle/70 px-1.5 pt-2.5">
             <div className="flex items-center gap-2">
               <div className="relative" ref={modelRef}>
                 <button

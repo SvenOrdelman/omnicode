@@ -42,16 +42,23 @@ export function createSession(projectId: string, provider = 'claude'): Session {
     projectId,
     title: DEFAULT_SESSION_TITLE,
     provider,
+    archived: false,
+    archivedAt: null,
     createdAt: now,
     updatedAt: now,
   };
 }
 
-export function listSessions(projectId: string): Session[] {
+export function listSessions(projectId: string, includeArchived = false): Session[] {
   const db = getDatabase();
-  const rows = db.prepare(
-    'SELECT * FROM sessions WHERE project_id = ? ORDER BY updated_at DESC'
-  ).all(projectId) as any[];
+  const rows = db
+    .prepare(
+      `SELECT * FROM sessions
+       WHERE project_id = ?
+       ${includeArchived ? '' : 'AND archived = 0'}
+       ORDER BY updated_at DESC`
+    )
+    .all(projectId) as any[];
 
   return rows.map((r) => ({
     id: r.id,
@@ -59,6 +66,8 @@ export function listSessions(projectId: string): Session[] {
     title: r.title,
     provider: r.provider,
     sdkSessionId: r.sdk_session_id,
+    archived: Boolean(r.archived),
+    archivedAt: r.archived_at ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
@@ -75,6 +84,8 @@ export function getSession(id: string): Session | null {
     title: r.title,
     provider: r.provider,
     sdkSessionId: r.sdk_session_id,
+    archived: Boolean(r.archived),
+    archivedAt: r.archived_at ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -102,6 +113,9 @@ export function addMessage(sessionId: string, role: string, content: ProviderCon
   const now = Date.now();
   const serialized = JSON.stringify(content);
 
+  // A new message automatically unarchives the session.
+  db.prepare('UPDATE sessions SET archived = 0, archived_at = NULL WHERE id = ?').run(sessionId);
+
   if (role === 'user') {
     const hasUserMessage = db.prepare(
       'SELECT 1 FROM session_messages WHERE session_id = ? AND role = ? LIMIT 1'
@@ -122,6 +136,17 @@ export function addMessage(sessionId: string, role: string, content: ProviderCon
   db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 
   return { id, sessionId, role: role as any, content: serialized, timestamp: now };
+}
+
+export function setSessionArchived(id: string, archived: boolean): void {
+  const db = getDatabase();
+  const now = Date.now();
+  db.prepare('UPDATE sessions SET archived = ?, archived_at = ?, updated_at = ? WHERE id = ?').run(
+    archived ? 1 : 0,
+    archived ? now : null,
+    now,
+    id
+  );
 }
 
 export function getMessages(sessionId: string): SessionMessage[] {

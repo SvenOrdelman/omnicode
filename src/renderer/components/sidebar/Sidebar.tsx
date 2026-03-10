@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
+  Archive,
   BookOpenCheck,
   ChevronDown,
   Folder,
@@ -9,7 +10,6 @@ import {
   PanelLeftOpen,
   Plus,
   Settings,
-  Sparkles,
   Terminal,
   Workflow,
 } from 'lucide-react';
@@ -40,7 +40,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const currentProject = useProjectStore((s) => s.currentProject);
   const recentProjects = useProjectStore((s) => s.recentProjects);
   const { activeView, setActiveView, terminalOpen, toggleTerminal, setSidebarCollapsed } = useUIStore();
-  const { newChat, loadSession, activeSession } = useChat();
+  const { newChat, loadSession, activeSession, archiveSession } = useChat();
   const { openProject, selectProject } = useProject();
 
   const [sessionMap, setSessionMap] = useState<Record<string, Session[]>>({});
@@ -245,24 +245,44 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                   )}
 
                   {sessions.slice(0, 7).map((session) => (
-                    <button
+                    <div
                       key={session.id}
-                      onClick={() => {
-                        loadSession(session.id);
-                        setActiveView('chat');
-                      }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors ${
-                        activeSession?.id === session.id
-                          ? 'bg-accent/10 text-text-primary'
-                          : 'text-text-secondary hover:bg-surface-3/80 hover:text-text-primary'
+                      className={`group flex items-center gap-1 rounded-lg px-1 ${
+                        activeSession?.id === session.id ? 'bg-accent/10' : ''
                       }`}
                     >
-                      <MessageSquare size={12} className="shrink-0 opacity-60" />
-                      <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                      <span className="shrink-0 text-[11px] text-text-muted tabular-nums">
-                        {toRelativeTime(session.updatedAt)}
-                      </span>
-                    </button>
+                      <button
+                        onClick={() => {
+                          loadSession(session.id);
+                          setActiveView('chat');
+                        }}
+                        className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-2 text-left text-[13px] transition-colors ${
+                          activeSession?.id === session.id
+                            ? 'text-text-primary'
+                            : 'text-text-secondary hover:bg-surface-3/80 hover:text-text-primary'
+                        }`}
+                      >
+                        <MessageSquare size={12} className="shrink-0 opacity-60" />
+                        <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                        <span className="shrink-0 text-[11px] text-text-muted tabular-nums">
+                          {toRelativeTime(session.updatedAt)}
+                        </span>
+                      </button>
+                      <button
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          await archiveSession(session.id);
+                          setSessionMap((prev) => ({
+                            ...prev,
+                            [project.id]: (prev[project.id] || []).filter((entry) => entry.id !== session.id),
+                          }));
+                        }}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-text-primary group-hover:opacity-100"
+                        title="Archive thread"
+                      >
+                        <Archive size={11} />
+                      </button>
+                    </div>
                   ))}
 
                   {sessions.length > 7 && (
@@ -314,12 +334,6 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
         </div>
       </div>
 
-      {/* Upgrade prompt */}
-      <button className="mt-2.5 flex w-full items-center gap-2 rounded-xl border border-border-default/80 bg-surface-0/60 px-3 py-2.5 text-xs text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors">
-        <Sparkles size={12} className="shrink-0 text-accent" />
-        <span className="flex-1 text-left font-medium">Upgrade plan</span>
-        <span className="text-[11px] font-semibold text-success tabular-nums">+17,824</span>
-      </button>
     </div>
   );
 }

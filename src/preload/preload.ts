@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
+import type { ProviderContent } from '../shared/provider-types';
 
 const api = {
   // Chat
@@ -35,6 +36,10 @@ const api = {
   listProjectFiles: (cwd: string) => ipcRenderer.invoke(IPC.EXPLORER_LIST_FILES, cwd),
   readProjectFile: (params: { cwd: string; filePath: string }) =>
     ipcRenderer.invoke(IPC.EXPLORER_READ_FILE, params),
+  writeProjectFile: (params: { cwd: string; filePath: string; content: string }) =>
+    ipcRenderer.invoke(IPC.EXPLORER_WRITE_FILE, params),
+  searchProjectContent: (params: { cwd: string; query: string }) =>
+    ipcRenderer.invoke(IPC.EXPLORER_SEARCH_CONTENT, params),
   listGitBranches: (cwd: string) => ipcRenderer.invoke(IPC.GIT_LIST_BRANCHES, cwd),
   switchGitBranch: (params: { cwd: string; branch: string }) =>
     ipcRenderer.invoke(IPC.GIT_SWITCH_BRANCH, params),
@@ -57,9 +62,17 @@ const api = {
   // Sessions
   createSession: (projectId: string, provider?: string) =>
     ipcRenderer.invoke(IPC.SESSION_CREATE, { projectId, provider }),
-  listSessions: (projectId: string) => ipcRenderer.invoke(IPC.SESSION_LIST, projectId),
+  listSessions: (projectId: string, includeArchived?: boolean) =>
+    ipcRenderer.invoke(IPC.SESSION_LIST, { projectId, includeArchived }),
   getSession: (sessionId: string) => ipcRenderer.invoke(IPC.SESSION_GET, sessionId),
   deleteSession: (sessionId: string) => ipcRenderer.invoke(IPC.SESSION_DELETE, sessionId),
+  addSessionMessage: (params: {
+    sessionId: string;
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: ProviderContent[];
+  }) => ipcRenderer.invoke(IPC.SESSION_ADD_MESSAGE, params),
+  archiveSession: (params: { sessionId: string; archived: boolean }) =>
+    ipcRenderer.invoke(IPC.SESSION_ARCHIVE, params),
 
   // Terminal
   createTerminal: (id: string, cwd: string) =>
