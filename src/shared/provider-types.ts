@@ -54,6 +54,21 @@ export interface ProviderStreamDelta {
   done?: boolean;
 }
 
+export interface ProviderStreamMessageEvent {
+  sessionId: string;
+  message?: ProviderMessage;
+  delta?: ProviderStreamDelta;
+}
+
+export interface ProviderStreamEndEvent {
+  sessionId: string;
+}
+
+export interface ProviderStreamErrorEvent {
+  sessionId: string;
+  error: string;
+}
+
 export interface ApprovalRequest {
   id: string;
   sessionId: string;

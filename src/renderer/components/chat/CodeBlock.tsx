@@ -19,27 +19,27 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
     <div className="group relative my-2 rounded-lg border border-border-default bg-surface-0 overflow-hidden">
       <div className="flex items-center justify-between border-b border-border-default px-3 py-1.5">
         <div className="flex items-center gap-1.5">
-          <FileCode2 size={13} className="text-text-muted" />
-          <span className="text-xs text-text-muted">{language || 'text'}</span>
+          <FileCode2 size={12} className="text-text-muted" />
+          <span className="text-[11px] text-text-muted">{language || 'text'}</span>
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors"
+          className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary transition-colors"
         >
           {copied ? (
             <>
-              <Check size={13} className="text-success" />
+              <Check size={12} className="text-success" />
               <span className="text-success">Copied</span>
             </>
           ) : (
             <>
-              <Copy size={13} />
+              <Copy size={12} />
               <span>Copy</span>
             </>
           )}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 text-sm">
+      <pre className="overflow-x-auto p-3 text-[12px] leading-5">
         <code className={language ? `language-${language}` : ''}>{code}</code>
       </pre>
     </div>

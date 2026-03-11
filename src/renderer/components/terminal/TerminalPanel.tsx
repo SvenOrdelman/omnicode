@@ -6,17 +6,59 @@ import { ipc } from '../../lib/ipc-client';
 import { useTerminal } from '../../hooks/useTerminal';
 import 'xterm/css/xterm.css';
 
+const MAX_SESSION_BUFFER_CHARS = 500_000;
+
+function appendSessionBuffer(
+  buffers: Map<string, string>,
+  id: string,
+  chunk: string
+): string {
+  const next = (buffers.get(id) ?? '') + chunk;
+  const bounded =
+    next.length > MAX_SESSION_BUFFER_CHARS
+      ? next.slice(next.length - MAX_SESSION_BUFFER_CHARS)
+      : next;
+  buffers.set(id, bounded);
+  return bounded;
+}
+
 export function TerminalPanel() {
   const { sessions, activeId, create, close, setActiveId } = useTerminal();
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const activeIdRef = useRef<string | null>(activeId);
+  const sessionBuffersRef = useRef<Map<string, string>>(new Map());
 
   // Create terminal on mount if none exist
   useEffect(() => {
     if (sessions.length === 0) {
       create();
     }
+  }, [sessions.length, create]);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // Keep only buffers for existing sessions
+  useEffect(() => {
+    const activeSessionIds = new Set(sessions.map((session) => session.id));
+    for (const id of sessionBuffersRef.current.keys()) {
+      if (!activeSessionIds.has(id)) {
+        sessionBuffersRef.current.delete(id);
+      }
+    }
+  }, [sessions]);
+
+  // Receive pty output for all sessions and keep in per-session buffers.
+  useEffect(() => {
+    return ipc().onTerminalData(({ id, data }) => {
+      appendSessionBuffer(sessionBuffersRef.current, id, data);
+      if (id === activeIdRef.current) {
+        xtermRef.current?.write(data);
+      }
+    });
   }, []);
 
   // Initialize xterm when active terminal changes
@@ -32,7 +74,7 @@ export function TerminalPanel() {
       theme: {
         background: '#09090b',
         foreground: '#e4e4e7',
-        cursor: '#a78bfa',
+        cursor: '#60a5fa',
         selectionBackground: '#3f3f46',
       },
       fontFamily: 'SF Mono, Menlo, Monaco, monospace',
@@ -48,16 +90,14 @@ export function TerminalPanel() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    const bufferedData = sessionBuffersRef.current.get(activeId);
+    if (bufferedData) {
+      term.write(bufferedData);
+    }
+
     // Send user input to pty
     term.onData((data) => {
       ipc().writeTerminal(activeId, data);
-    });
-
-    // Receive pty output
-    const unsubData = ipc().onTerminalData(({ id, data }) => {
-      if (id === activeId) {
-        term.write(data);
-      }
     });
 
     // Handle resize
@@ -74,7 +114,6 @@ export function TerminalPanel() {
 
     return () => {
       observer.disconnect();
-      unsubData();
       term.dispose();
       xtermRef.current = null;
     };

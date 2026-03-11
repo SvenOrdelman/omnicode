@@ -22,9 +22,12 @@ export const useTerminalStore = create<TerminalState>((set) => ({
       activeId: session.id,
     })),
   removeSession: (id) =>
-    set((s) => ({
-      sessions: s.sessions.filter((t) => t.id !== id),
-      activeId: s.activeId === id ? (s.sessions[0]?.id ?? null) : s.activeId,
-    })),
+    set((s) => {
+      const nextSessions = s.sessions.filter((t) => t.id !== id);
+      return {
+        sessions: nextSessions,
+        activeId: s.activeId === id ? (nextSessions[0]?.id ?? null) : s.activeId,
+      };
+    }),
   setActiveId: (id) => set({ activeId: id }),
 }));

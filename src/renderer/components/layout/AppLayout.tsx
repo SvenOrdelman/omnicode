@@ -7,9 +7,11 @@ import { SettingsPanel } from '../settings/SettingsPanel';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ResizeHandle } from './ResizeHandle';
 import { RightPane } from '../explorer/RightPane';
+import { AutomationsPanel } from '../automations/AutomationsPanel';
+import { SkillsPanel } from '../skills/SkillsPanel';
 
 const FRAME_PADDING = 8;
-const OUTER_GAP = 8;
+const OUTER_GAP = 0;
 const RESIZE_HANDLE_SIZE = 10;
 const COLLAPSED_SIDEBAR_WIDTH = 72;
 const SIDEBAR_MIN = 220;
@@ -169,6 +171,10 @@ export function AppLayout() {
 
   const renderCenter = () => {
     switch (activeView) {
+      case 'automations':
+        return <AutomationsPanel />;
+      case 'skills':
+        return <SkillsPanel />;
       case 'settings':
         return <SettingsPanel />;
       case 'chat':
@@ -183,12 +189,14 @@ export function AppLayout() {
     <div
       ref={layoutRef}
       className="flex h-screen w-screen overflow-hidden bg-surface-0 text-text-primary"
-      style={{ padding: 8, gap: 8 }}
+      style={{ padding: FRAME_PADDING, gap: OUTER_GAP }}
     >
       {/* Sidebar */}
       <div
         style={{ width: paneMetrics.sidebarDisplayWidth }}
-        className="flex-shrink-0 overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40 transition-[width] duration-200 ease-in-out"
+        className={`flex-shrink-0 rounded-2xl border border-border-subtle/75 bg-surface-1/40 transition-[width] duration-200 ease-in-out ${
+          sidebarCollapsed ? 'overflow-visible' : 'overflow-hidden'
+        }`}
       >
         <Sidebar collapsed={sidebarCollapsed} />
       </div>

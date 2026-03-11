@@ -48,6 +48,18 @@ export const IPC = {
   // Approval
   APPROVAL_REQUEST: 'approval:request',
   APPROVAL_RESPOND: 'approval:respond',
+
+  // Automations
+  AUTOMATIONS_GET_REMOTE_URL: 'automations:get-remote-url',
+  AUTOMATIONS_OPEN_REMOTE: 'automations:open-remote',
+
+  // Skills
+  SKILLS_LIST: 'skills:list',
+  SKILLS_READ: 'skills:read',
+  SKILLS_CREATE: 'skills:create',
+  SKILLS_UPDATE: 'skills:update',
+  SKILLS_DELETE: 'skills:delete',
+  SKILLS_OPEN_FOLDER: 'skills:open-folder',
 } as const;
 
 export type IPCChannel = (typeof IPC)[keyof typeof IPC];

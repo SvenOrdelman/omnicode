@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { ProviderContent } from '../shared/provider-types';
+import type {
+  ProviderContent,
+  ProviderStreamEndEvent,
+  ProviderStreamErrorEvent,
+  ProviderStreamMessageEvent,
+} from '../shared/provider-types';
+import type { SkillDocument, SkillsOverview, SkillSummary } from '../shared/skill-types';
+import type { RemoteAutomationConfig } from '../shared/automation-types';
 
 const api = {
   // Chat
@@ -13,18 +20,18 @@ const api = {
   }) => ipcRenderer.invoke(IPC.CHAT_SEND_PROMPT, params),
   interrupt: (params: { sessionId: string; providerId?: string }) =>
     ipcRenderer.invoke(IPC.CHAT_INTERRUPT, params),
-  onStreamMessage: (callback: (message: any) => void) => {
-    const handler = (_: any, message: any) => callback(message);
+  onStreamMessage: (callback: (event: ProviderStreamMessageEvent) => void) => {
+    const handler = (_: any, event: ProviderStreamMessageEvent) => callback(event);
     ipcRenderer.on(IPC.CHAT_STREAM_MESSAGE, handler);
     return () => ipcRenderer.removeListener(IPC.CHAT_STREAM_MESSAGE, handler);
   },
-  onStreamEnd: (callback: (data: { sessionId: string }) => void) => {
-    const handler = (_: any, data: any) => callback(data);
+  onStreamEnd: (callback: (data: ProviderStreamEndEvent) => void) => {
+    const handler = (_: any, data: ProviderStreamEndEvent) => callback(data);
     ipcRenderer.on(IPC.CHAT_STREAM_END, handler);
     return () => ipcRenderer.removeListener(IPC.CHAT_STREAM_END, handler);
   },
-  onStreamError: (callback: (data: { sessionId: string; error: string }) => void) => {
-    const handler = (_: any, data: any) => callback(data);
+  onStreamError: (callback: (data: ProviderStreamErrorEvent) => void) => {
+    const handler = (_: any, data: ProviderStreamErrorEvent) => callback(data);
     ipcRenderer.on(IPC.CHAT_STREAM_ERROR, handler);
     return () => ipcRenderer.removeListener(IPC.CHAT_STREAM_ERROR, handler);
   },
@@ -96,6 +103,24 @@ const api = {
   },
   respondApproval: (id: string, approved: boolean) =>
     ipcRenderer.send(IPC.APPROVAL_RESPOND, { id, approved }),
+
+  // Automations
+  getRemoteAutomationConfig: (): Promise<RemoteAutomationConfig> =>
+    ipcRenderer.invoke(IPC.AUTOMATIONS_GET_REMOTE_URL),
+  openRemoteAutomation: (url?: string): Promise<{ ok: true; url: string }> =>
+    ipcRenderer.invoke(IPC.AUTOMATIONS_OPEN_REMOTE, url),
+
+  // Skills
+  listSkills: (): Promise<SkillsOverview> => ipcRenderer.invoke(IPC.SKILLS_LIST),
+  readSkill: (skillId: string): Promise<SkillDocument> => ipcRenderer.invoke(IPC.SKILLS_READ, skillId),
+  createSkill: (params: { name: string; content?: string }): Promise<SkillSummary> =>
+    ipcRenderer.invoke(IPC.SKILLS_CREATE, params),
+  updateSkill: (params: { skillId: string; content: string }): Promise<SkillSummary> =>
+    ipcRenderer.invoke(IPC.SKILLS_UPDATE, params),
+  deleteSkill: (skillId: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke(IPC.SKILLS_DELETE, skillId),
+  openSkillFolder: (skillPath: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke(IPC.SKILLS_OPEN_FOLDER, skillPath),
 
   // Menu events
   onMenuEvent: (event: string, callback: () => void) => {

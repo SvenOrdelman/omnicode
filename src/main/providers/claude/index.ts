@@ -48,6 +48,7 @@ export class ClaudeProvider implements ILLMProvider {
         cwd,
         permissionMode: 'default',
         model: this.model,
+        includePartialMessages: true,
       };
 
       // Resume existing session if we have an SDK session ID
@@ -56,6 +57,7 @@ export class ClaudeProvider implements ILLMProvider {
       }
 
       const generator = query({ prompt, options: queryOptions });
+      let lastAssistantText: string | null = null;
 
       for await (const message of generator) {
         if (controller.signal.aborted) break;
@@ -70,8 +72,34 @@ export class ClaudeProvider implements ILLMProvider {
 
         const normalized = adaptSdkMessage(message);
         if (normalized) {
+          if (
+            message.type === 'result' &&
+            typeof (message as any).result === 'string' &&
+            lastAssistantText &&
+            (message as any).result.trim() === lastAssistantText.trim()
+          ) {
+            continue;
+          }
+
           onMessage(normalized);
-          addMessage(sessionId, normalized.role, normalized.content);
+          if (normalized.role !== 'tool') {
+            addMessage(sessionId, normalized.role, normalized.content);
+          }
+
+          if (normalized.role === 'assistant') {
+            const assistantText = normalized.content
+              .map((block) => {
+                if (block.type === 'text') return block.text;
+                if (block.type === 'code') return block.code;
+                return '';
+              })
+              .join('\n')
+              .trim();
+
+            if (assistantText) {
+              lastAssistantText = assistantText;
+            }
+          }
         }
       }
 

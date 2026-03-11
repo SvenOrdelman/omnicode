@@ -6,6 +6,8 @@ import { registerTerminalHandlers } from './terminal.ipc';
 import { registerApprovalHandlers } from './approval.ipc';
 import { registerGitHandlers } from './git.ipc';
 import { registerExplorerHandlers } from './explorer.ipc';
+import { registerAutomationHandlers } from './automations.ipc';
+import { registerSkillHandlers } from './skills.ipc';
 
 export function registerAllHandlers(): void {
   registerChatHandlers();
@@ -16,4 +18,6 @@ export function registerAllHandlers(): void {
   registerApprovalHandlers();
   registerGitHandlers();
   registerExplorerHandlers();
+  registerAutomationHandlers();
+  registerSkillHandlers();
 }

@@ -65,10 +65,10 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   }, [modelMenuOpen]);
 
   return (
-    <div className="relative z-20 bg-transparent px-6 pb-6 pt-4 sm:px-8">
+    <div className="relative z-20 bg-transparent px-5 pb-5 pt-3 sm:px-7">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="overflow-hidden rounded-[30px] border border-border-default/80 bg-surface-1/85 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.34)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
-          <div className="flex items-end gap-2.5 rounded-2xl border border-border-subtle/70 bg-surface-0/50 px-3.5 py-2.5">
+        <div className="overflow-visible rounded-2xl border border-border-default/80 bg-surface-1/85 p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.32)] backdrop-blur-sm transition-colors focus-within:border-border-strong">
+          <div className="flex items-end gap-2 rounded-xl border border-border-subtle/70 bg-surface-0/50 px-3 py-2">
             <textarea
               ref={textareaRef}
               value={value}
@@ -77,37 +77,37 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
               placeholder="Message Claude..."
               rows={1}
               disabled={disabled}
-              className="min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
+              className="min-h-[38px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[13px] leading-5 text-text-primary placeholder-text-muted focus:outline-none disabled:opacity-50"
             />
 
             {isStreaming ? (
               <button
                 onClick={onInterrupt}
-                className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white hover:bg-danger/90 transition-colors"
+                className="mb-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-danger text-white hover:bg-danger/90 transition-colors"
               >
-                <Square size={15} />
+                <Square size={14} />
               </button>
             ) : (
               <button
                 onClick={handleSubmit}
                 disabled={!value.trim() || disabled}
-                className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover disabled:opacity-30 disabled:hover:bg-accent transition-colors"
+                className="mb-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover disabled:opacity-30 disabled:hover:bg-accent transition-colors"
               >
-                <Send size={15} />
+                <Send size={14} />
               </button>
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3 border-t border-border-subtle/70 px-1.5 pt-2.5">
+          <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-border-subtle/70 px-1.5 pt-2">
             <div className="flex items-center gap-2">
               <div className="relative" ref={modelRef}>
                 <button
                   onClick={() => setModelMenuOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-xs font-medium text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border-default px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors"
                 >
-                  <Bot size={13} />
+                  <Bot size={12} />
                   <span>{selectedModel.label}</span>
-                  <ChevronDown size={13} />
+                  <ChevronDown size={12} />
                 </button>
 
                 {modelMenuOpen && (
@@ -119,7 +119,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
                           setSelectedModel(model);
                           setModelMenuOpen(false);
                         }}
-                        className={`w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
+                        className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors ${
                           selectedModel.id === model.id
                             ? 'bg-accent-muted text-text-primary'
                             : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'

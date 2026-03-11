@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { existsSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { IPC } from '../../shared/ipc-channels';
@@ -13,6 +13,34 @@ interface TerminalInstance {
 }
 
 const terminals = new Map<string, TerminalInstance>();
+
+function ensureNodePtySpawnHelperExecutable(): void {
+  if (process.platform === 'win32') return;
+
+  try {
+    const packageJsonPath = require.resolve('node-pty/package.json');
+    const prebuildsDir = path.join(path.dirname(packageJsonPath), 'prebuilds');
+    if (!isDirectory(prebuildsDir)) return;
+
+    const prebuildDirs = readdirSync(prebuildsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+
+    for (const prebuildDir of prebuildDirs) {
+      const helperPath = path.join(prebuildsDir, prebuildDir, 'spawn-helper');
+      if (!existsSync(helperPath)) continue;
+
+      const mode = statSync(helperPath).mode & 0o777;
+      if ((mode & 0o111) === 0) {
+        chmodSync(helperPath, mode | 0o111);
+        console.warn(`Adjusted node-pty helper permissions: ${helperPath}`);
+      }
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`Unable to verify node-pty helper permissions (${reason})`);
+  }
+}
 
 function isDirectory(targetPath: string | undefined): targetPath is string {
   if (!targetPath) return false;
@@ -72,6 +100,7 @@ function getSpawnEnv(shell: string): Record<string, string> {
 async function loadPty() {
   if (!pty) {
     try {
+      ensureNodePtySpawnHelperExecutable();
       const imported = await import('node-pty');
       pty = (imported as any).spawn ? imported : (imported as any).default;
 

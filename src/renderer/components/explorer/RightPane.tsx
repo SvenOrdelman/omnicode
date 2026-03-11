@@ -6,6 +6,7 @@ import { useProjectStore } from '../../stores/project.store';
 import { ipc } from '../../lib/ipc-client';
 import { useChat } from '../../hooks/useChat';
 import { useUIStore } from '../../stores/ui.store';
+import { ResizeHandle } from '../layout/ResizeHandle';
 
 interface ChangedFile {
   path: string;
@@ -92,6 +93,10 @@ function normalizeLineEndings(content: string): string {
   return content.replace(/\r\n/g, '\n');
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function extractLineContext(content: string, lineNumber: number): {
   lineText: string;
   contextSnippet: string;
@@ -129,6 +134,13 @@ function extractLineContext(content: string, lineNumber: number): {
 }
 
 export function RightPane() {
+  const DEFAULT_VISIBLE_FILE_ROWS = 5;
+  const FILE_ROW_HEIGHT = 36;
+  const FILE_LIST_MIN_HEIGHT = 110;
+  const FILE_VIEW_MIN_HEIGHT = 180;
+  const SPLIT_HANDLE_HEIGHT = 10;
+  const DEFAULT_FILE_LIST_HEIGHT = DEFAULT_VISIBLE_FILE_ROWS * FILE_ROW_HEIGHT;
+
   const currentProject = useProjectStore((s) => s.currentProject);
   const { sendPrompt } = useChat();
   const setActiveView = useUIStore((s) => s.setActiveView);
@@ -142,11 +154,14 @@ export function RightPane() {
   const [loadingFileView, setLoadingFileView] = useState(false);
   const [savingFileEdit, setSavingFileEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [changesListHeight, setChangesListHeight] = useState(DEFAULT_FILE_LIST_HEIGHT);
+  const [splitContainerHeight, setSplitContainerHeight] = useState(0);
 
   const diffEditorRef = useRef<MonacoEditor.IStandaloneDiffEditor | null>(null);
   const modifiedContentSubscriptionRef = useRef<{ dispose: () => void } | null>(null);
   const saveFileEditRef = useRef<() => void>(() => undefined);
   const lastAutoRefreshAtRef = useRef(0);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
 
   const canEditSelectedFile = useMemo(
     () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree'),
@@ -155,6 +170,13 @@ export function RightPane() {
   const hasUnsavedEdit = canEditSelectedFile && editorDraft !== editorBaseContent;
   const lockNavigation = hasUnsavedEdit || savingFileEdit;
   const selectedLanguage = languageFromFilePath(selectedChangeFile);
+  const maxChangesListHeight = useMemo(() => {
+    if (splitContainerHeight <= 0) {
+      return DEFAULT_FILE_LIST_HEIGHT;
+    }
+
+    return Math.max(FILE_LIST_MIN_HEIGHT, splitContainerHeight - FILE_VIEW_MIN_HEIGHT - SPLIT_HANDLE_HEIGHT);
+  }, [DEFAULT_FILE_LIST_HEIGHT, splitContainerHeight]);
 
   const loadChanges = useCallback(async () => {
     if (!currentProject) return;
@@ -203,6 +225,7 @@ export function RightPane() {
       setFileView(null);
       setEditorDraft('');
       setEditorBaseContent('');
+      setChangesListHeight(DEFAULT_FILE_LIST_HEIGHT);
       return;
     }
 
@@ -405,6 +428,28 @@ export function RightPane() {
     []
   );
 
+  useEffect(() => {
+    if (!splitContainerRef.current) return undefined;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setSplitContainerHeight(entry.contentRect.height);
+    });
+    observer.observe(splitContainerRef.current);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setChangesListHeight((previous) => clamp(previous, FILE_LIST_MIN_HEIGHT, maxChangesListHeight));
+  }, [maxChangesListHeight]);
+
+  const handleChangesListResize = useCallback(
+    (delta: number) => {
+      setChangesListHeight(Math.round(clamp(changesListHeight + delta, FILE_LIST_MIN_HEIGHT, maxChangesListHeight)));
+    },
+    [changesListHeight, maxChangesListHeight]
+  );
+
   const diffEditorOptions = useMemo<MonacoEditor.IStandaloneDiffEditorConstructionOptions>(
     () => ({
       automaticLayout: true,
@@ -457,8 +502,11 @@ export function RightPane() {
       )}
 
       {currentProject && (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="max-h-[42%] min-h-[150px] shrink-0 overflow-y-auto border-b border-border-subtle">
+        <div ref={splitContainerRef} className="flex min-h-0 flex-1 flex-col">
+          <div
+            style={{ height: changesListHeight }}
+            className="shrink-0 overflow-y-auto border-b border-border-subtle"
+          >
             {loadingChanges && (
               <div className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
                 <Loader2 size={14} className="animate-spin" />
@@ -487,6 +535,8 @@ export function RightPane() {
                 </button>
               ))}
           </div>
+
+          <ResizeHandle direction="vertical" onResize={handleChangesListResize} />
 
           <div className="min-h-0 flex-1 p-3">
             <div className="flex h-full min-h-0 flex-col">

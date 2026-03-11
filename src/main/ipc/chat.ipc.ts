@@ -21,12 +21,12 @@ export function registerChatHandlers(): void {
         sdkSessionId,
         onMessage: (message: ProviderMessage) => {
           if (!window.isDestroyed()) {
-            window.webContents.send(IPC.CHAT_STREAM_MESSAGE, message);
+            window.webContents.send(IPC.CHAT_STREAM_MESSAGE, { sessionId, message });
           }
         },
         onDelta: (delta) => {
           if (!window.isDestroyed()) {
-            window.webContents.send(IPC.CHAT_STREAM_MESSAGE, delta);
+            window.webContents.send(IPC.CHAT_STREAM_MESSAGE, { sessionId, delta });
           }
         },
         onApprovalRequest: async (request) => {

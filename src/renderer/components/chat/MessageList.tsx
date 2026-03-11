@@ -7,12 +7,13 @@ import { StreamingIndicator } from './StreamingIndicator';
 interface MessageListProps {
   messages: ProviderMessage[];
   isStreaming: boolean;
+  activityLines: string[];
   repoName?: string;
 }
 
-export function MessageList({ messages, isStreaming, repoName }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityLines, repoName }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
-  const visibleMessages = messages.filter((message) => message.role !== 'system');
+  const visibleMessages = messages.filter((message) => message.role !== 'system' && message.role !== 'tool');
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -22,21 +23,21 @@ export function MessageList({ messages, isStreaming, repoName }: MessageListProp
     return (
       <div className="flex h-full items-center justify-center px-6 text-text-muted">
         <div className="text-center">
-          <MessageSquare size={38} className="mx-auto mb-4 opacity-35" />
-          <p className="text-[42px] font-semibold leading-none text-text-primary">Let&apos;s build</p>
-          <p className="mt-2 text-3xl text-text-secondary">{repoName || 'your-repo'}</p>
+          <MessageSquare size={30} className="mx-auto mb-3 opacity-35" />
+          <p className="text-[30px] font-semibold leading-none text-text-primary">Let&apos;s build</p>
+          <p className="mt-1.5 text-xl text-text-secondary">{repoName || 'your-repo'}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 pb-8 pt-8 sm:px-8">
-      <div className="mx-auto max-w-5xl space-y-5">
+    <div className="flex-1 overflow-y-auto px-5 pb-7 pt-6 sm:px-7">
+      <div className="mx-auto max-w-5xl space-y-4">
         {visibleMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
-        {isStreaming && <StreamingIndicator />}
+        {isStreaming && <StreamingIndicator activityLines={activityLines} />}
         <div ref={endRef} />
       </div>
     </div>

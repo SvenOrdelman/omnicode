@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Archive,
   BookOpenCheck,
+  Check,
   ChevronDown,
   Folder,
   FolderOpen,
+  Loader2,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -40,18 +42,27 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   const currentProject = useProjectStore((s) => s.currentProject);
   const recentProjects = useProjectStore((s) => s.recentProjects);
   const { activeView, setActiveView, terminalOpen, toggleTerminal, setSidebarCollapsed } = useUIStore();
-  const { newChat, loadSession, activeSession, archiveSession } = useChat();
+  const { newChat, loadSession, activeSession, archiveSession, sessionStatusById, sessionCompletedById } = useChat();
   const { openProject, selectProject } = useProject();
 
   const [sessionMap, setSessionMap] = useState<Record<string, Session[]>>({});
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const sortedProjects = useMemo(
+    () =>
+      [...recentProjects].sort((a, b) => {
+        const byName = a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+        if (byName !== 0) return byName;
+        return a.path.localeCompare(b.path, undefined, { sensitivity: 'base', numeric: true });
+      }),
+    [recentProjects]
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     const loadSessions = async () => {
       const entries = await Promise.all(
-        recentProjects.slice(0, 8).map(async (project) => {
+        sortedProjects.slice(0, 8).map(async (project) => {
           try {
             const sessions = await ipc().listSessions(project.id);
             return [project.id, sessions as Session[]] as const;
@@ -71,25 +82,48 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
     return () => {
       cancelled = true;
     };
-  }, [recentProjects, activeSession]);
+  }, [sortedProjects, activeSession]);
 
   useEffect(() => {
-    if (!recentProjects.length) return;
+    if (!sortedProjects.length) return;
     setExpandedProjects((prev) => {
       const next = { ...prev };
-      recentProjects.forEach((project) => {
+      sortedProjects.forEach((project) => {
         if (next[project.id] === undefined) {
           next[project.id] = currentProject ? currentProject.id === project.id : false;
         }
       });
       return next;
     });
-  }, [recentProjects, currentProject]);
+  }, [sortedProjects, currentProject]);
 
   const handleNewChat = useCallback(() => {
     newChat();
     setActiveView('chat');
   }, [newChat, setActiveView]);
+
+  const handleOpenSession = useCallback(
+    async (projectPath: string, sessionId: string) => {
+      await selectProject(projectPath);
+      await loadSession(sessionId);
+      setActiveView('chat');
+    },
+    [loadSession, selectProject, setActiveView]
+  );
+
+  const primaryTabClass = (isActive: boolean) =>
+    `flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-accent/10 text-accent'
+        : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+    }`;
+
+  const iconTabClass = (isActive: boolean) =>
+    `rounded-xl p-2.5 transition-colors ${
+      isActive
+        ? 'bg-accent/10 text-accent'
+        : 'text-text-muted hover:bg-surface-3 hover:text-text-primary'
+    }`;
 
   const toggleProject = (projectId: string) => {
     setExpandedProjects((prev) => ({ ...prev, [projectId]: !prev[projectId] }));
@@ -112,9 +146,25 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           <Tooltip label="New thread">
             <button
               onClick={handleNewChat}
-              className="rounded-xl p-2.5 text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors"
+              className={iconTabClass(activeView === 'chat')}
             >
               <Plus size={17} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Automations">
+            <button
+              onClick={() => setActiveView('automations')}
+              className={iconTabClass(activeView === 'automations')}
+            >
+              <Workflow size={17} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Skills">
+            <button
+              onClick={() => setActiveView('skills')}
+              className={iconTabClass(activeView === 'skills')}
+            >
+              <BookOpenCheck size={17} />
             </button>
           </Tooltip>
           <Tooltip label="Projects">
@@ -141,11 +191,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           <Tooltip label="Settings" side="top">
             <button
               onClick={() => setActiveView('settings')}
-              className={`rounded-xl p-2.5 transition-colors ${
-                activeView === 'settings'
-                  ? 'bg-accent/10 text-accent'
-                  : 'text-text-muted hover:bg-surface-3 hover:text-text-primary'
-              }`}
+              className={iconTabClass(activeView === 'settings')}
             >
               <Settings size={17} />
             </button>
@@ -156,23 +202,29 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
   }
 
   return (
-    <div className="flex h-full flex-col border-r border-border-subtle bg-surface-1 px-4 pb-4">
+    <div className="flex h-full flex-col border-r border-border-subtle bg-surface-1 px-3 pb-4">
       <div className="h-9 flex-shrink-0 [-webkit-app-region:drag]" />
 
       {/* Primary actions */}
       <div className="space-y-1 pb-4">
         <button
           onClick={handleNewChat}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors"
+          className={primaryTabClass(activeView === 'chat')}
         >
           <Plus size={15} className="shrink-0" />
           New thread
         </button>
-        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors">
+        <button
+          onClick={() => setActiveView('automations')}
+          className={primaryTabClass(activeView === 'automations')}
+        >
           <Workflow size={15} className="shrink-0" />
           Automations
         </button>
-        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors">
+        <button
+          onClick={() => setActiveView('skills')}
+          className={primaryTabClass(activeView === 'skills')}
+        >
           <BookOpenCheck size={15} className="shrink-0" />
           Skills
         </button>
@@ -196,7 +248,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
 
       {/* Project + session list */}
       <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
-        {recentProjects.length === 0 && (
+        {sortedProjects.length === 0 && (
           <button
             onClick={openProject}
             className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border-default px-3 py-3 text-sm text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors"
@@ -206,7 +258,7 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           </button>
         )}
 
-        {recentProjects.map((project) => {
+        {sortedProjects.map((project) => {
           const sessions = sessionMap[project.id] || [];
           const expanded = expandedProjects[project.id] ?? false;
           const isCurrent = currentProject?.id === project.id;
@@ -244,46 +296,53 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
                     <p className="px-2.5 py-2.5 text-xs text-text-muted italic">No threads yet</p>
                   )}
 
-                  {sessions.slice(0, 7).map((session) => (
-                    <div
-                      key={session.id}
-                      className={`group flex items-center gap-1 rounded-lg px-1 ${
-                        activeSession?.id === session.id ? 'bg-accent/10' : ''
-                      }`}
-                    >
-                      <button
-                        onClick={() => {
-                          loadSession(session.id);
-                          setActiveView('chat');
-                        }}
-                        className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-2 text-left text-[13px] transition-colors ${
-                          activeSession?.id === session.id
-                            ? 'text-text-primary'
-                            : 'text-text-secondary hover:bg-surface-3/80 hover:text-text-primary'
+                  {sessions.slice(0, 7).map((session) => {
+                    const status = sessionStatusById[session.id] ?? 'idle';
+                    const isStreaming = status === 'streaming';
+                    const showCompleted = status !== 'streaming' && sessionCompletedById[session.id];
+
+                    return (
+                      <div
+                        key={session.id}
+                        className={`group relative flex items-center rounded-lg px-1 ${
+                          activeSession?.id === session.id ? 'bg-accent/10' : ''
                         }`}
                       >
-                        <MessageSquare size={12} className="shrink-0 opacity-60" />
-                        <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                        <span className="shrink-0 text-[11px] text-text-muted tabular-nums">
-                          {toRelativeTime(session.updatedAt)}
-                        </span>
-                      </button>
-                      <button
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          await archiveSession(session.id);
-                          setSessionMap((prev) => ({
-                            ...prev,
-                            [project.id]: (prev[project.id] || []).filter((entry) => entry.id !== session.id),
-                          }));
-                        }}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-text-primary group-hover:opacity-100"
-                        title="Archive thread"
-                      >
-                        <Archive size={11} />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          onClick={() => {
+                            handleOpenSession(project.path, session.id).catch(() => undefined);
+                          }}
+                          className={`flex w-full min-w-0 items-center gap-2.5 rounded-lg px-1.5 py-2 text-left text-[13px] transition-colors ${
+                            activeSession?.id === session.id
+                              ? 'text-text-primary'
+                              : 'text-text-secondary hover:bg-surface-3/80 hover:text-text-primary'
+                          }`}
+                        >
+                          <MessageSquare size={12} className="shrink-0 opacity-60" />
+                          <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                          <span className="inline-flex h-4 min-w-[1rem] shrink-0 items-center justify-center text-[11px] text-text-muted tabular-nums">
+                            {isStreaming && <Loader2 size={12} className="animate-spin text-accent" />}
+                            {showCompleted && <Check size={12} className="text-success" />}
+                            {!isStreaming && !showCompleted && toRelativeTime(session.updatedAt)}
+                          </span>
+                        </button>
+                        <button
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            await archiveSession(session.id);
+                            setSessionMap((prev) => ({
+                              ...prev,
+                              [project.id]: (prev[project.id] || []).filter((entry) => entry.id !== session.id),
+                            }));
+                          }}
+                          className="pointer-events-none absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md bg-surface-1/90 text-text-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-text-primary group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                          title="Archive thread"
+                        >
+                          <Archive size={11} />
+                        </button>
+                      </div>
+                    );
+                  })}
 
                   {sessions.length > 7 && (
                     <button className="w-full px-2.5 py-2 text-left text-xs text-text-muted hover:text-text-secondary transition-colors">
