@@ -23,6 +23,29 @@ export interface GitChangedFile {
   unstaged: string;
 }
 
+export interface GitHistoryEntry {
+  hash: string;
+  shortHash: string;
+  authorName: string;
+  authoredAt: string;
+  subject: string;
+}
+
+export type GitCommitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechanged' | 'changed';
+
+export interface GitCommitFileChange {
+  path: string;
+  previousPath: string | null;
+  status: GitCommitFileStatus;
+  additions: number;
+  deletions: number;
+}
+
+export interface GitCommitFileView {
+  content: string;
+  baseContent: string;
+}
+
 export interface GitFileView {
   content: string;
   baseContent: string;
@@ -129,6 +152,219 @@ export async function listGitChanges(cwd: string): Promise<GitChangedFile[]> {
   } catch {
     return [];
   }
+}
+
+function toSafeHistoryLimit(limit?: number): number {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return 50;
+  }
+  const integerLimit = Math.trunc(limit);
+  return Math.min(200, Math.max(1, integerLimit));
+}
+
+export async function listGitHistory(cwd: string, limit?: number): Promise<GitHistoryEntry[]> {
+  try {
+    const result = await runGit(cwd, [
+      'log',
+      '-n',
+      String(toSafeHistoryLimit(limit)),
+      '--date=iso-strict',
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s',
+    ]);
+
+    return result.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [hash = '', shortHash = '', authorName = '', authoredAt = '', ...subjectParts] = line.split('\x1f');
+        return {
+          hash,
+          shortHash,
+          authorName,
+          authoredAt,
+          subject: subjectParts.join('\x1f').trim(),
+        };
+      })
+      .filter((entry) => Boolean(entry.hash) && Boolean(entry.shortHash));
+  } catch {
+    return [];
+  }
+}
+
+function toSafeCommitRef(commit: string): string {
+  const ref = commit.trim();
+  if (!/^[0-9a-f]{7,40}$/i.test(ref)) {
+    throw new Error('Invalid commit reference.');
+  }
+  return ref;
+}
+
+export async function getGitCommitDiff(cwd: string, commit: string): Promise<string> {
+  const ref = toSafeCommitRef(commit);
+  const result = await runGit(cwd, [
+    'show',
+    '--no-color',
+    '--date=iso-strict',
+    '--pretty=fuller',
+    '--patch',
+    ref,
+  ]);
+  const output = result.stdout.trimEnd();
+  return output || 'No commit diff available.';
+}
+
+function normalizeCommitFileStatus(rawStatusToken: string): GitCommitFileStatus {
+  const code = rawStatusToken[0]?.toUpperCase() ?? '';
+  switch (code) {
+    case 'A':
+      return 'added';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    case 'C':
+      return 'copied';
+    case 'T':
+      return 'typechanged';
+    case 'M':
+      return 'modified';
+    default:
+      return 'changed';
+  }
+}
+
+function parseNumstatCount(value: string): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  return Math.trunc(num);
+}
+
+function toRepoRelativePath(cwd: string, filePath: string): string {
+  const absolute = ensureInsideRepo(cwd, filePath);
+  const root = path.resolve(cwd);
+  return path.relative(root, absolute).split(path.sep).join('/');
+}
+
+async function resolvePrimaryParent(cwd: string, commit: string): Promise<string | null> {
+  const result = await runGit(cwd, ['rev-list', '--parents', '-n', '1', commit]);
+  const parts = result.stdout.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts[1];
+}
+
+export async function listGitCommitFiles(cwd: string, commit: string): Promise<GitCommitFileChange[]> {
+  const ref = toSafeCommitRef(commit);
+
+  const [statusResult, numstatResult] = await Promise.all([
+    runGit(cwd, ['diff-tree', '--no-commit-id', '--name-status', '-r', '--find-renames', '--find-copies', ref]),
+    runGit(cwd, ['show', '--format=', '--numstat', '--find-renames', '--find-copies', ref]),
+  ]);
+
+  const byPath = new Map<string, GitCommitFileChange>();
+
+  for (const rawLine of statusResult.stdout.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const parts = line.split('\t');
+    if (parts.length < 2) continue;
+
+    const status = normalizeCommitFileStatus(parts[0]);
+    let pathAtCommit = parts[1] ?? '';
+    let previousPath: string | null = null;
+
+    if ((status === 'renamed' || status === 'copied') && parts.length >= 3) {
+      previousPath = parts[1] ?? null;
+      pathAtCommit = parts[2] ?? '';
+    }
+
+    if (!pathAtCommit) continue;
+    byPath.set(pathAtCommit, {
+      path: pathAtCommit,
+      previousPath,
+      status,
+      additions: 0,
+      deletions: 0,
+    });
+  }
+
+  for (const rawLine of numstatResult.stdout.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const parts = line.split('\t');
+    if (parts.length < 3) continue;
+
+    const additions = parseNumstatCount(parts[0] ?? '0');
+    const deletions = parseNumstatCount(parts[1] ?? '0');
+    const hasRenamePaths = parts.length >= 4;
+    const previousPath = hasRenamePaths ? parts[2] ?? null : null;
+    const pathAtCommit = hasRenamePaths ? (parts[3] ?? '') : (parts[2] ?? '');
+    if (!pathAtCommit) continue;
+
+    const existing = byPath.get(pathAtCommit);
+    if (existing) {
+      existing.additions = additions;
+      existing.deletions = deletions;
+      if (!existing.previousPath && previousPath) {
+        existing.previousPath = previousPath;
+      }
+      continue;
+    }
+
+    byPath.set(pathAtCommit, {
+      path: pathAtCommit,
+      previousPath,
+      status: hasRenamePaths ? 'renamed' : 'changed',
+      additions,
+      deletions,
+    });
+  }
+
+  return Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export async function getGitCommitFileView(
+  cwd: string,
+  params: { commit: string; path: string; previousPath?: string | null; status?: GitCommitFileStatus }
+): Promise<GitCommitFileView> {
+  const ref = toSafeCommitRef(params.commit);
+  const parentRef = await resolvePrimaryParent(cwd, ref);
+  const status = params.status ?? 'changed';
+  const pathAtCommit = toRepoRelativePath(cwd, params.path);
+  const pathAtParent = toRepoRelativePath(cwd, params.previousPath || params.path);
+
+  const readAtRef = async (sourceRef: string, filePath: string): Promise<string> => {
+    const result = await runGit(cwd, ['show', `${sourceRef}:${filePath}`]);
+    return normalizeLineEndings(result.stdout);
+  };
+
+  if (!parentRef || status === 'added') {
+    const content = await readAtRef(ref, pathAtCommit).catch(() => '');
+    return {
+      content,
+      baseContent: '',
+    };
+  }
+
+  if (status === 'deleted') {
+    const baseContent = await readAtRef(parentRef, pathAtParent).catch(() => '');
+    return {
+      content: '',
+      baseContent,
+    };
+  }
+
+  const [baseContent, content] = await Promise.all([
+    readAtRef(parentRef, pathAtParent).catch(() => ''),
+    readAtRef(ref, pathAtCommit).catch(() => ''),
+  ]);
+
+  return {
+    content,
+    baseContent,
+  };
 }
 
 function createUntrackedDiff(filePath: string, content: string): string {

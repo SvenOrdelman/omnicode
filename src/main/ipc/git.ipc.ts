@@ -4,10 +4,14 @@ import {
   acceptGitFile,
   commitGitChanges,
   fetchGitChanges,
+  getGitCommitDiff,
+  getGitCommitFileView,
   getGitDiff,
   getGitFileView,
   listGitBranches,
+  listGitCommitFiles,
   listGitChanges,
+  listGitHistory,
   pushGitChanges,
   rejectGitFile,
   switchGitBranch,
@@ -32,9 +36,37 @@ export function registerGitHandlers(): void {
     return listGitChanges(cwd);
   });
 
+  registerHandler(IPC.GIT_LIST_HISTORY, async (_, { cwd, limit }: { cwd: string; limit?: number }) => {
+    return listGitHistory(cwd, limit);
+  });
+
+  registerHandler(IPC.GIT_LIST_COMMIT_FILES, async (_, { cwd, commit }: { cwd: string; commit: string }) => {
+    return listGitCommitFiles(cwd, commit);
+  });
+
   registerHandler(IPC.GIT_GET_DIFF, async (_, { cwd, filePath }: { cwd: string; filePath: string }) => {
     return getGitDiff(cwd, filePath);
   });
+
+  registerHandler(IPC.GIT_GET_COMMIT_DIFF, async (_, { cwd, commit }: { cwd: string; commit: string }) => {
+    return getGitCommitDiff(cwd, commit);
+  });
+
+  registerHandler(
+    IPC.GIT_GET_COMMIT_FILE_VIEW,
+    async (
+      _,
+      params: {
+        cwd: string;
+        commit: string;
+        path: string;
+        previousPath?: string | null;
+        status?: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechanged' | 'changed';
+      }
+    ) => {
+      return getGitCommitFileView(params.cwd, params);
+    }
+  );
 
   registerHandler(IPC.GIT_GET_FILE_VIEW, async (_, { cwd, filePath }: { cwd: string; filePath: string }) => {
     return getGitFileView(cwd, filePath);

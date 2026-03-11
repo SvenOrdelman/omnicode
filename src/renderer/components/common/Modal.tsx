@@ -6,9 +6,10 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  maxWidthClass?: string;
 }
 
-export function Modal({ open, onClose, title, children }: ModalProps) {
+export function Modal({ open, onClose, title, children, maxWidthClass }: ModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -21,10 +22,12 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
 
   if (!open) return null;
 
+  const widthClass = maxWidthClass || 'w-[min(92vw,32rem)] max-w-none';
+
   return (
     <dialog
       ref={dialogRef}
-      className="fixed inset-0 z-50 m-auto max-w-lg rounded-xl border border-border-default bg-surface-1 p-0 text-text-primary shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      className={`fixed inset-0 z-50 m-auto ${widthClass} rounded-xl border border-border-default bg-surface-1 p-0 text-text-primary shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm`}
       onClose={onClose}
     >
       <div className="flex items-center justify-between border-b border-border-default px-6 py-4">

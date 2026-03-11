@@ -33,12 +33,19 @@ export interface ProviderThinkingContent {
   thinking: string;
 }
 
+export interface ProviderEventContent {
+  type: 'event';
+  event: 'user_cancelled';
+  text: string;
+}
+
 export type ProviderContent =
   | ProviderTextContent
   | ProviderCodeContent
   | ProviderToolUseContent
   | ProviderToolResultContent
-  | ProviderThinkingContent;
+  | ProviderThinkingContent
+  | ProviderEventContent;
 
 export interface ProviderMessage {
   id: string;

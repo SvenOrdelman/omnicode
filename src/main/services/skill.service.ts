@@ -3,11 +3,18 @@ import fs from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { SkillDocument, SkillScope, SkillSummary, SkillsOverview } from '../../shared/skill-types';
+import type { SkillDocument, SkillRoot, SkillScope, SkillSummary, SkillsOverview } from '../../shared/skill-types';
+import { getDatabase } from './database.service';
 
 const SKILL_FILE_NAME = 'SKILL.md';
 const MAX_SCAN_DEPTH = 5;
 const DESCRIPTION_LIMIT = 220;
+
+type SkillRegistry = {
+  claudeHome: string;
+  codexHome: string;
+  roots: SkillRoot[];
+};
 
 function getCodexHome(): string {
   const configured = process.env.CODEX_HOME?.trim();
@@ -15,15 +22,84 @@ function getCodexHome(): string {
   return path.join(os.homedir(), '.codex');
 }
 
-function getSkillsRoot(codexHome: string): string {
-  return path.join(codexHome, 'skills');
+function getClaudeHome(): string {
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim() || process.env.CLAUDE_HOME?.trim();
+  if (configured) return path.resolve(configured);
+  return path.join(os.homedir(), '.claude');
+}
+
+function getSkillsRoot(homePath: string): string {
+  return path.join(homePath, 'skills');
+}
+
+function getProjectSkillRoots(): SkillRoot[] {
+  const db = getDatabase();
+  const rows = db.prepare('SELECT id, name, path FROM projects ORDER BY last_opened DESC').all() as Array<{
+    id: string;
+    name: string;
+    path: string;
+  }>;
+
+  return rows.map((row) => ({
+    key: `project-${row.id}`,
+    label: `Project: ${row.name}`,
+    path: path.join(row.path, '.claude', 'skills'),
+    writable: true,
+    createTarget: false,
+  }));
+}
+
+function dedupeSkillRoots(roots: SkillRoot[]): SkillRoot[] {
+  const seen = new Set<string>();
+  const deduped: SkillRoot[] = [];
+
+  for (const root of roots) {
+    const resolvedPath = path.resolve(root.path);
+    if (seen.has(resolvedPath)) {
+      continue;
+    }
+
+    seen.add(resolvedPath);
+    deduped.push({ ...root, path: resolvedPath });
+  }
+
+  return deduped;
+}
+
+function getSkillRegistry(): SkillRegistry {
+  const claudeHome = getClaudeHome();
+  const codexHome = getCodexHome();
+
+  const roots = dedupeSkillRoots([
+    {
+      key: 'claude-global',
+      label: 'Claude Global',
+      path: getSkillsRoot(claudeHome),
+      writable: true,
+      createTarget: true,
+    },
+    ...getProjectSkillRoots(),
+    {
+      key: 'legacy-codex',
+      label: 'Legacy Codex',
+      path: getSkillsRoot(codexHome),
+      writable: true,
+      createTarget: false,
+    },
+  ]);
+
+  return { claudeHome, codexHome, roots };
+}
+
+function isInsideBase(basePath: string, targetPath: string): boolean {
+  const resolvedBase = path.resolve(basePath);
+  const resolvedTarget = path.resolve(targetPath);
+  if (resolvedTarget === resolvedBase) return true;
+  return resolvedTarget.startsWith(`${resolvedBase}${path.sep}`);
 }
 
 function assertInsideBase(basePath: string, targetPath: string): void {
-  const resolvedBase = path.resolve(basePath);
-  const resolvedTarget = path.resolve(targetPath);
-  if (resolvedTarget === resolvedBase) return;
-  if (!resolvedTarget.startsWith(`${resolvedBase}${path.sep}`)) {
+  if (!isInsideBase(basePath, targetPath)) {
     throw new Error('Invalid path');
   }
 }
@@ -152,11 +228,64 @@ function getScopeFromId(skillId: string): SkillScope {
   return isSystemSkillId(skillId) ? 'system' : 'user';
 }
 
-async function summarizeSkill(skillDocPath: string, rootPath: string): Promise<SkillSummary> {
+function getSkillDocPath(skillsRoot: string, skillId: string): string {
+  const normalizedId = normalizeRelativeId(skillId);
+  const skillDirPath = path.resolve(skillsRoot, normalizedId);
+  assertInsideBase(skillsRoot, skillDirPath);
+  return path.join(skillDirPath, SKILL_FILE_NAME);
+}
+
+function getRootByKey(roots: SkillRoot[], rootKey: string): SkillRoot {
+  const root = roots.find((candidate) => candidate.key === rootKey);
+  if (!root) {
+    throw new Error('Skill source not found');
+  }
+  return root;
+}
+
+async function resolveSkillLocation(
+  skillId: string,
+  roots: SkillRoot[]
+): Promise<{ root: SkillRoot; relativeId: string; skillDocPath: string }> {
+  const separatorIndex = skillId.indexOf(':');
+
+  if (separatorIndex > 0) {
+    const rootKey = skillId.slice(0, separatorIndex);
+    const relativeId = normalizeRelativeId(skillId.slice(separatorIndex + 1));
+    const root = getRootByKey(roots, rootKey);
+    return {
+      root,
+      relativeId,
+      skillDocPath: getSkillDocPath(root.path, relativeId),
+    };
+  }
+
+  const relativeId = normalizeRelativeId(skillId);
+
+  for (const root of roots) {
+    const skillDocPath = getSkillDocPath(root.path, relativeId);
+    if (await pathExists(skillDocPath)) {
+      return { root, relativeId, skillDocPath };
+    }
+  }
+
+  const fallback = roots.find((root) => root.key === 'legacy-codex') || roots[0];
+  if (!fallback) {
+    throw new Error('No skill sources available');
+  }
+
+  return {
+    root: fallback,
+    relativeId,
+    skillDocPath: getSkillDocPath(fallback.path, relativeId),
+  };
+}
+
+async function summarizeSkill(skillDocPath: string, root: SkillRoot): Promise<SkillSummary> {
   const skillDir = path.dirname(skillDocPath);
-  const id = path.relative(rootPath, skillDir).split(path.sep).join('/');
+  const relativeId = path.relative(root.path, skillDir).split(path.sep).join('/');
   const name = path.basename(skillDir);
-  const scope = getScopeFromId(id);
+  const scope = getScopeFromId(relativeId);
 
   let description = 'No description available.';
   try {
@@ -166,59 +295,78 @@ async function summarizeSkill(skillDocPath: string, rootPath: string): Promise<S
     // Ignore read issues and keep fallback description.
   }
 
-  return { id, name, description, path: skillDir, scope };
-}
-
-function getSkillDocPath(skillsRoot: string, skillId: string): string {
-  const normalizedId = normalizeRelativeId(skillId);
-  const skillDirPath = path.resolve(skillsRoot, normalizedId);
-  assertInsideBase(skillsRoot, skillDirPath);
-  return path.join(skillDirPath, SKILL_FILE_NAME);
+  return {
+    id: `${root.key}:${relativeId}`,
+    name,
+    description,
+    path: skillDir,
+    origin: root.label,
+    scope,
+  };
 }
 
 export async function listSkills(): Promise<SkillsOverview> {
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
+  const registry = getSkillRegistry();
 
-  const skillDocs = await listSkillMarkdownFiles(skillsRoot);
-  const summaries = await Promise.all(skillDocs.map((skillDocPath) => summarizeSkill(skillDocPath, skillsRoot)));
+  const skillsPerRoot = await Promise.all(
+    registry.roots.map(async (root) => {
+      const skillDocs = await listSkillMarkdownFiles(root.path);
+      return { root, skillDocs };
+    })
+  );
+
+  const summaries = await Promise.all(
+    skillsPerRoot.flatMap(({ root, skillDocs }) => skillDocs.map((skillDocPath) => summarizeSkill(skillDocPath, root)))
+  );
 
   return {
-    codexHome,
+    codexHome: registry.codexHome,
+    claudeHome: registry.claudeHome,
+    roots: registry.roots,
     own: summaries
       .filter((skill) => skill.scope === 'user')
-      .sort((a, b) => a.name.localeCompare(b.name)),
+      .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path)),
     system: summaries
       .filter((skill) => skill.scope === 'system')
-      .sort((a, b) => a.name.localeCompare(b.name)),
+      .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path)),
   };
 }
 
 export async function readSkill(skillId: string): Promise<SkillDocument> {
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
-  const skillDocPath = getSkillDocPath(skillsRoot, skillId);
+  const registry = getSkillRegistry();
+  const location = await resolveSkillLocation(skillId, registry.roots);
 
-  if (!(await pathExists(skillDocPath))) {
+  if (!(await pathExists(location.skillDocPath))) {
     throw new Error('Skill not found');
   }
 
   const [summary, content] = await Promise.all([
-    summarizeSkill(skillDocPath, skillsRoot),
-    fs.readFile(skillDocPath, 'utf8'),
+    summarizeSkill(location.skillDocPath, location.root),
+    fs.readFile(location.skillDocPath, 'utf8'),
   ]);
 
   return { ...summary, content };
 }
 
-export async function createSkill(name: string, content?: string): Promise<SkillSummary> {
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
+export async function createSkill(name: string, content?: string, rootKey?: string): Promise<SkillSummary> {
+  const registry = getSkillRegistry();
+  const createRoot = rootKey
+    ? getRootByKey(registry.roots, rootKey)
+    : registry.roots.find((root) => root.createTarget) || registry.roots[0];
+
+  if (!createRoot) {
+    throw new Error('No skill sources available');
+  }
+
+  if (!createRoot.writable) {
+    throw new Error('Primary skill source is read-only');
+  }
+
   const skillId = slugifySkillName(name);
-  const skillDirPath = path.resolve(skillsRoot, skillId);
+  const skillDirPath = path.resolve(createRoot.path, skillId);
   const skillDocPath = path.join(skillDirPath, SKILL_FILE_NAME);
 
-  assertInsideBase(skillsRoot, skillDirPath);
+  assertInsideBase(createRoot.path, skillDirPath);
 
   if (await pathExists(skillDocPath)) {
     throw new Error(`Skill "${skillId}" already exists`);
@@ -227,53 +375,58 @@ export async function createSkill(name: string, content?: string): Promise<Skill
   await fs.mkdir(skillDirPath, { recursive: true });
   await fs.writeFile(skillDocPath, content?.trim() || buildDefaultSkillContent(name), 'utf8');
 
-  return summarizeSkill(skillDocPath, skillsRoot);
+  return summarizeSkill(skillDocPath, createRoot);
 }
 
 export async function updateSkill(skillId: string, content: string): Promise<SkillSummary> {
-  const normalizedId = normalizeRelativeId(skillId);
-  if (isSystemSkillId(normalizedId)) {
+  const registry = getSkillRegistry();
+  const location = await resolveSkillLocation(skillId, registry.roots);
+
+  if (isSystemSkillId(location.relativeId)) {
     throw new Error('System skills are read-only');
   }
 
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
-  const skillDocPath = getSkillDocPath(skillsRoot, normalizedId);
+  if (!location.root.writable) {
+    throw new Error('This skill source is read-only');
+  }
 
-  if (!(await pathExists(skillDocPath))) {
+  if (!(await pathExists(location.skillDocPath))) {
     throw new Error('Skill not found');
   }
 
-  await fs.writeFile(skillDocPath, content, 'utf8');
-  return summarizeSkill(skillDocPath, skillsRoot);
+  await fs.writeFile(location.skillDocPath, content, 'utf8');
+  return summarizeSkill(location.skillDocPath, location.root);
 }
 
 export async function deleteSkill(skillId: string): Promise<{ ok: true }> {
-  const normalizedId = normalizeRelativeId(skillId);
-  if (isSystemSkillId(normalizedId)) {
+  const registry = getSkillRegistry();
+  const location = await resolveSkillLocation(skillId, registry.roots);
+
+  if (isSystemSkillId(location.relativeId)) {
     throw new Error('System skills cannot be deleted');
   }
 
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
-  const skillDocPath = getSkillDocPath(skillsRoot, normalizedId);
-  const skillDirPath = path.dirname(skillDocPath);
+  if (!location.root.writable) {
+    throw new Error('This skill source is read-only');
+  }
 
-  if (!(await pathExists(skillDocPath))) {
+  if (!(await pathExists(location.skillDocPath))) {
     throw new Error('Skill not found');
   }
 
-  await fs.rm(skillDirPath, { recursive: true, force: true });
+  await fs.rm(path.dirname(location.skillDocPath), { recursive: true, force: true });
   return { ok: true };
 }
 
 export async function openSkillFolder(skillPath: string): Promise<{ ok: true }> {
-  const codexHome = getCodexHome();
-  const skillsRoot = getSkillsRoot(codexHome);
+  const registry = getSkillRegistry();
   const resolvedSkillPath = path.resolve(skillPath);
   const skillDocPath = path.join(resolvedSkillPath, SKILL_FILE_NAME);
 
-  assertInsideBase(skillsRoot, resolvedSkillPath);
+  const isAllowedPath = registry.roots.some((root) => isInsideBase(root.path, resolvedSkillPath));
+  if (!isAllowedPath) {
+    throw new Error('Invalid path');
+  }
 
   if (!(await pathExists(skillDocPath))) {
     throw new Error('Skill not found');

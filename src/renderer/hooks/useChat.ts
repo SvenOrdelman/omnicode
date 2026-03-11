@@ -14,6 +14,7 @@ let unsubscribeStreamHandlers: (() => void) | null = null;
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const MAX_TITLE_LENGTH = 72;
 const MAX_ACTIVITY_LINE_LENGTH = 140;
+const USER_CANCELLED_EVENT_TEXT = 'User cancelled';
 
 interface StoredSessionMessage {
   id: string;
@@ -275,10 +276,36 @@ export function useChat() {
   const interrupt = useCallback(async () => {
     if (!activeSession) return;
     await ipc().interrupt({ sessionId: activeSession.id });
+    const eventResult = await ipc()
+      .addSessionMessage({
+        sessionId: activeSession.id,
+        role: 'system',
+        content: [{ type: 'event', event: 'user_cancelled', text: USER_CANCELLED_EVENT_TEXT }],
+      })
+      .catch(() => null);
+
+    if (eventResult?.session) {
+      setActiveSession(eventResult.session);
+    }
+
+    if (eventResult?.message) {
+      addMessage(parseStoredMessage(eventResult.message));
+    }
+
     setSessionStatus(activeSession.id, 'idle');
+    setSessionError(activeSession.id, null);
     setSessionCompleted(activeSession.id, false);
     clearSessionActivity(activeSession.id);
-  }, [activeSession, clearSessionActivity, setSessionCompleted, setSessionStatus]);
+  }, [
+    activeSession,
+    addMessage,
+    clearSessionActivity,
+    parseStoredMessage,
+    setActiveSession,
+    setSessionCompleted,
+    setSessionError,
+    setSessionStatus,
+  ]);
 
   const loadSession = useCallback(
     async (sessionId: string) => {

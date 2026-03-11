@@ -5,11 +5,22 @@ export interface SkillSummary {
   name: string;
   description: string;
   path: string;
+  origin: string;
   scope: SkillScope;
+}
+
+export interface SkillRoot {
+  key: string;
+  label: string;
+  path: string;
+  writable: boolean;
+  createTarget: boolean;
 }
 
 export interface SkillsOverview {
   codexHome: string;
+  claudeHome: string;
+  roots: SkillRoot[];
   own: SkillSummary[];
   system: SkillSummary[];
 }

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DiffEditor as MonacoDiffEditor } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
-import { FileCode2, Loader2, MessageSquarePlus, RefreshCw, Save } from 'lucide-react';
+import { FileCode2, History, Loader2, MessageSquarePlus, RefreshCw, Save } from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
 import { ipc } from '../../lib/ipc-client';
 import { useChat } from '../../hooks/useChat';
@@ -30,7 +30,31 @@ interface GitBranchInfo {
   current: string | null;
 }
 
+interface GitHistoryEntry {
+  hash: string;
+  shortHash: string;
+  authorName: string;
+  authoredAt: string;
+  subject: string;
+}
+
+type GitCommitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechanged' | 'changed';
+
+interface GitCommitFileChange {
+  path: string;
+  previousPath: string | null;
+  status: GitCommitFileStatus;
+  additions: number;
+  deletions: number;
+}
+
+interface GitCommitFileView {
+  content: string;
+  baseContent: string;
+}
+
 type GitAction = 'commit' | 'push' | 'fetch';
+type RightPaneTab = 'changes' | 'history';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   ts: 'typescript',
@@ -91,6 +115,10 @@ function statusBadgeClass(status: string): string {
       return 'bg-danger/15 text-danger';
     case 'renamed':
       return 'bg-warning/15 text-warning';
+    case 'copied':
+      return 'bg-accent/15 text-accent';
+    case 'typechanged':
+      return 'bg-warning/20 text-warning';
     case 'untracked':
       return 'bg-accent/15 text-accent';
     default:
@@ -142,6 +170,15 @@ function extractLineContext(content: string, lineNumber: number): {
   };
 }
 
+function formatHistoryTimestamp(rawTimestamp: string): string {
+  const date = new Date(rawTimestamp);
+  if (Number.isNaN(date.getTime())) {
+    return rawTimestamp;
+  }
+
+  return date.toLocaleString();
+}
+
 export function RightPane() {
   const DEFAULT_VISIBLE_FILE_ROWS = 5;
   const FILE_ROW_HEIGHT = 36;
@@ -166,12 +203,21 @@ export function RightPane() {
   const [runningAction, setRunningAction] = useState<GitAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<RightPaneTab>('changes');
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [commitTitle, setCommitTitle] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
   const [pushRemote, setPushRemote] = useState('origin');
   const [pushBranch, setPushBranch] = useState('');
+  const [historyItems, setHistoryItems] = useState<GitHistoryEntry[]>([]);
+  const [selectedHistoryCommit, setSelectedHistoryCommit] = useState<string | null>(null);
+  const [historyFiles, setHistoryFiles] = useState<GitCommitFileChange[]>([]);
+  const [selectedHistoryFilePath, setSelectedHistoryFilePath] = useState<string | null>(null);
+  const [historyFileView, setHistoryFileView] = useState<GitCommitFileView | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingHistoryFiles, setLoadingHistoryFiles] = useState(false);
+  const [loadingHistoryFileView, setLoadingHistoryFileView] = useState(false);
   const [changesListHeight, setChangesListHeight] = useState(DEFAULT_FILE_LIST_HEIGHT);
   const [splitContainerHeight, setSplitContainerHeight] = useState(0);
 
@@ -195,6 +241,15 @@ export function RightPane() {
   const someCommitFilesSelected = selectedCommitPaths.length > 0 && !allCommitFilesSelected;
   const lockNavigation = hasUnsavedEdit || savingFileEdit || runningAction !== null;
   const selectedLanguage = languageFromFilePath(selectedChangeFile);
+  const selectedHistoryItem = useMemo(
+    () => historyItems.find((entry) => entry.hash === selectedHistoryCommit) ?? null,
+    [historyItems, selectedHistoryCommit]
+  );
+  const selectedHistoryFile = useMemo(
+    () => historyFiles.find((file) => file.path === selectedHistoryFilePath) ?? null,
+    [historyFiles, selectedHistoryFilePath]
+  );
+  const selectedHistoryLanguage = languageFromFilePath(selectedHistoryFilePath);
   const maxChangesListHeight = useMemo(() => {
     if (splitContainerHeight <= 0) {
       return DEFAULT_FILE_LIST_HEIGHT;
@@ -231,6 +286,31 @@ export function RightPane() {
     }
   }, [currentProject]);
 
+  const loadHistory = useCallback(async () => {
+    if (!currentProject) return;
+    setLoadingHistory(true);
+    setError(null);
+
+    try {
+      const entries: GitHistoryEntry[] = await ipc().listGitHistory({ cwd: currentProject.path, limit: 80 });
+      setHistoryItems(entries);
+      setSelectedHistoryCommit((previous) => {
+        if (!entries.length) return null;
+        if (previous && entries.some((entry) => entry.hash === previous)) return previous;
+        return entries[0]?.hash ?? null;
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load git history');
+      setHistoryItems([]);
+      setSelectedHistoryCommit(null);
+      setHistoryFiles([]);
+      setSelectedHistoryFilePath(null);
+      setHistoryFileView(null);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [currentProject]);
+
   const loadGitFileView = useCallback(async (cwd: string, filePath: string): Promise<GitFileView> => {
     try {
       return await ipc().getGitFileView({ cwd, filePath });
@@ -260,8 +340,14 @@ export function RightPane() {
       setEditorDraft('');
       setEditorBaseContent('');
       setCurrentBranch(null);
+      setActiveTab('changes');
       setCommitDialogOpen(false);
       setPushDialogOpen(false);
+      setHistoryItems([]);
+      setSelectedHistoryCommit(null);
+      setHistoryFiles([]);
+      setSelectedHistoryFilePath(null);
+      setHistoryFileView(null);
       setChangesListHeight(DEFAULT_FILE_LIST_HEIGHT);
       return;
     }
@@ -280,12 +366,22 @@ export function RightPane() {
   }, [changes]);
 
   useEffect(() => {
+    if (!currentProject || activeTab !== 'history') return;
+    loadHistory().catch(() => undefined);
+  }, [activeTab, currentProject, loadHistory]);
+
+  useEffect(() => {
     if (!selectAllCheckboxRef.current) return;
     selectAllCheckboxRef.current.indeterminate = someCommitFilesSelected;
   }, [someCommitFilesSelected]);
 
   const refreshOnWindowActive = useCallback(async () => {
     if (!currentProject || lockNavigation) return;
+
+    if (activeTab === 'history') {
+      await loadHistory();
+      return;
+    }
 
     try {
       const [updatedChanges, branchInfo]: [ChangedFile[], GitBranchInfo] = await Promise.all([
@@ -316,7 +412,7 @@ export function RightPane() {
     } catch {
       // Ignore background refresh errors to avoid noisy banners on focus changes.
     }
-  }, [currentProject, loadGitFileView, lockNavigation, selectedChangeFile]);
+  }, [activeTab, currentProject, loadGitFileView, loadHistory, lockNavigation, selectedChangeFile]);
 
   useEffect(() => {
     const AUTO_REFRESH_THROTTLE_MS = 250;
@@ -344,6 +440,7 @@ export function RightPane() {
   }, [refreshOnWindowActive]);
 
   useEffect(() => {
+    if (activeTab !== 'changes') return;
     if (!currentProject || !selectedChangeFile) {
       setFileView(null);
       setEditorDraft('');
@@ -365,7 +462,62 @@ export function RightPane() {
         setEditorBaseContent('');
       })
       .finally(() => setLoadingFileView(false));
-  }, [currentProject, loadGitFileView, selectedChangeFile]);
+  }, [activeTab, currentProject, loadGitFileView, selectedChangeFile]);
+
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    if (!currentProject || !selectedHistoryCommit) {
+      setHistoryFiles([]);
+      setSelectedHistoryFilePath(null);
+      setHistoryFileView(null);
+      return;
+    }
+
+    setLoadingHistoryFiles(true);
+    ipc()
+      .listGitCommitFiles({ cwd: currentProject.path, commit: selectedHistoryCommit })
+      .then((files: GitCommitFileChange[]) => {
+        setHistoryFiles(files);
+        setSelectedHistoryFilePath((previous) => {
+          if (!files.length) return null;
+          if (previous && files.some((file) => file.path === previous)) return previous;
+          return files[0]?.path ?? null;
+        });
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load changed files for commit');
+        setHistoryFiles([]);
+        setSelectedHistoryFilePath(null);
+        setHistoryFileView(null);
+      })
+      .finally(() => setLoadingHistoryFiles(false));
+  }, [activeTab, currentProject, selectedHistoryCommit]);
+
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    if (!currentProject || !selectedHistoryCommit || !selectedHistoryFile) {
+      setHistoryFileView(null);
+      return;
+    }
+
+    setLoadingHistoryFileView(true);
+    ipc()
+      .getGitCommitFileView({
+        cwd: currentProject.path,
+        commit: selectedHistoryCommit,
+        path: selectedHistoryFile.path,
+        previousPath: selectedHistoryFile.previousPath,
+        status: selectedHistoryFile.status,
+      })
+      .then((view: GitCommitFileView) => {
+        setHistoryFileView(view);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load file changes');
+        setHistoryFileView(null);
+      })
+      .finally(() => setLoadingHistoryFileView(false));
+  }, [activeTab, currentProject, selectedHistoryCommit, selectedHistoryFile]);
 
   const selectChangeFile = useCallback(
     (filePath: string) => {
@@ -379,6 +531,14 @@ export function RightPane() {
     },
     [hasUnsavedEdit, selectedChangeFile]
   );
+
+  const selectHistoryCommit = useCallback((commitHash: string) => {
+    setSelectedHistoryCommit(commitHash);
+  }, []);
+
+  const selectHistoryFile = useCallback((filePath: string) => {
+    setSelectedHistoryFilePath(filePath);
+  }, []);
 
   const toggleFileForCommit = useCallback((filePath: string, selected: boolean) => {
     setSelectedForCommit((previous) => ({
@@ -547,9 +707,10 @@ export function RightPane() {
 
   useEffect(() => {
     saveFileEditRef.current = () => {
+      if (activeTab !== 'changes') return;
       saveFullFileEdit().catch(() => undefined);
     };
-  }, [saveFullFileEdit]);
+  }, [activeTab, saveFullFileEdit]);
 
   useEffect(() => {
     const handleSaveEvent: EventListener = () => {
@@ -633,56 +794,117 @@ export function RightPane() {
     [canEditSelectedFile]
   );
 
+  const historyDiffEditorOptions = useMemo<MonacoEditor.IStandaloneDiffEditorConstructionOptions>(
+    () => ({
+      automaticLayout: true,
+      renderSideBySide: false,
+      originalEditable: false,
+      readOnly: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+      lineHeight: 20,
+      lineNumbersMinChars: 3,
+      lineDecorationsWidth: 8,
+      scrollBeyondLastLine: false,
+      smoothScrolling: true,
+      tabSize: 2,
+      insertSpaces: true,
+      ignoreTrimWhitespace: false,
+      renderIndicators: true,
+      glyphMargin: false,
+      renderMarginRevertIcon: false,
+      folding: true,
+      enableSplitViewResizing: true,
+      fontFamily: `'SF Mono', Menlo, Monaco, 'Cascadia Mono', monospace`,
+    }),
+    []
+  );
+
   return (
     <div className="flex h-full flex-col bg-surface-1/90">
       <div className="border-b border-border-subtle px-3 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Changes</p>
+          <div className="min-w-0">
+            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-surface-2/80 p-0.5">
+              <button
+                onClick={() => setActiveTab('changes')}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeTab === 'changes'
+                    ? 'bg-accent text-white'
+                    : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                }`}
+                title="View current working tree changes"
+              >
+                <FileCode2 size={12} />
+                Changes
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  activeTab === 'history'
+                    ? 'bg-accent text-white'
+                    : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                }`}
+                title="Browse commit history for current branch"
+              >
+                <History size={12} />
+                History
+              </button>
+            </div>
             <p className="text-[11px] text-text-muted">
-              {selectedCommitPaths.length}/{changes.length} selected for commit
+              {activeTab === 'changes'
+                ? `${selectedCommitPaths.length}/${changes.length} selected for commit`
+                : `${historyItems.length} commit${historyItems.length === 1 ? '' : 's'} in history`}
               {currentBranch ? ` • ${currentBranch}` : ''}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <GitBranchSwitcher />
-            <button
-              onClick={openCommitDialog}
-              disabled={lockNavigation || changes.length === 0}
-              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
-              title="Create a commit from selected files"
-            >
-              {runningAction === 'commit' ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-              Commit
-            </button>
-            <button
-              onClick={openPushDialog}
-              disabled={lockNavigation}
-              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
-              title="Push committed changes to remote"
-            >
-              {runningAction === 'push' ? <Loader2 size={12} className="animate-spin" /> : null}
-              Push
-            </button>
-            <button
-              onClick={() => {
-                handleFetch().catch(() => undefined);
-              }}
-              disabled={lockNavigation}
-              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
-              title="Fetch updates from remote"
-            >
-              {runningAction === 'fetch' ? <Loader2 size={12} className="animate-spin" /> : null}
-              Fetch
-            </button>
+            {activeTab === 'changes' && (
+              <>
+                <button
+                  onClick={openCommitDialog}
+                  disabled={lockNavigation || changes.length === 0}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  title="Create a commit from selected files"
+                >
+                  {runningAction === 'commit' ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                  Commit
+                </button>
+                <button
+                  onClick={openPushDialog}
+                  disabled={lockNavigation}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  title="Push committed changes to remote"
+                >
+                  {runningAction === 'push' ? <Loader2 size={12} className="animate-spin" /> : null}
+                  Push
+                </button>
+                <button
+                  onClick={() => {
+                    handleFetch().catch(() => undefined);
+                  }}
+                  disabled={lockNavigation}
+                  className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  title="Fetch updates from remote"
+                >
+                  {runningAction === 'fetch' ? <Loader2 size={12} className="animate-spin" /> : null}
+                  Fetch
+                </button>
+              </>
+            )}
             <button
               onClick={() => {
                 if (lockNavigation) return;
-                loadChanges().catch(() => undefined);
+                if (activeTab === 'changes') {
+                  loadChanges().catch(() => undefined);
+                } else {
+                  loadHistory().catch(() => undefined);
+                }
               }}
               disabled={lockNavigation}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
-              title="Refresh local git status"
+              title={activeTab === 'changes' ? 'Refresh local git status' : 'Refresh commit history'}
             >
               <RefreshCw size={12} />
               Refresh
@@ -693,11 +915,11 @@ export function RightPane() {
 
       {!currentProject && (
         <div className="m-3 rounded-xl border border-border-subtle bg-surface-0/70 p-3 text-sm text-text-secondary">
-          Open a project to view git changes.
+          Open a project to view git changes and commit history.
         </div>
       )}
 
-      {currentProject && (
+      {currentProject && activeTab === 'changes' && (
         <div ref={splitContainerRef} className="flex min-h-0 flex-1 flex-col">
           <div
             style={{ height: changesListHeight }}
@@ -819,6 +1041,140 @@ export function RightPane() {
                     Select a changed file to view and edit its diff.
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {currentProject && activeTab === 'history' && (
+        <div ref={splitContainerRef} className="flex min-h-0 flex-1 flex-col">
+          <div
+            style={{ height: changesListHeight }}
+            className="shrink-0 overflow-y-auto border-b border-border-subtle"
+          >
+            {loadingHistory && (
+              <div className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
+                <Loader2 size={14} className="animate-spin" />
+                Loading history...
+              </div>
+            )}
+            {!loadingHistory && historyItems.length === 0 && (
+              <p className="px-3 py-2 text-sm text-text-muted">No commits found for this branch.</p>
+            )}
+            {!loadingHistory &&
+              historyItems.map((entry) => (
+                <button
+                  key={entry.hash}
+                  onClick={() => selectHistoryCommit(entry.hash)}
+                  className={`w-full border-b border-border-subtle px-3 py-2 text-left transition-colors ${
+                    selectedHistoryCommit === entry.hash
+                      ? 'bg-accent-muted/60 text-text-primary'
+                      : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                  }`}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium uppercase text-text-muted">
+                      {entry.shortHash}
+                    </span>
+                    <span className="truncate text-[10px] text-text-muted">{formatHistoryTimestamp(entry.authoredAt)}</span>
+                  </div>
+                  <p className="truncate text-sm">{entry.subject || '(no subject)'}</p>
+                  <p className="truncate text-[11px] text-text-muted">{entry.authorName}</p>
+                </button>
+              ))}
+          </div>
+
+          <ResizeHandle direction="vertical" onResize={handleChangesListResize} />
+
+          <div className="min-h-0 flex-1 p-3">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs text-text-muted">
+                    {selectedHistoryItem
+                      ? `${selectedHistoryItem.shortHash} • ${selectedHistoryItem.subject || '(no subject)'}`
+                      : 'No commit selected'}
+                  </p>
+                  {selectedHistoryItem && (
+                    <p className="truncate text-[11px] text-text-muted">
+                      {selectedHistoryItem.authorName} • {formatHistoryTimestamp(selectedHistoryItem.authoredAt)}
+                    </p>
+                  )}
+                </div>
+                {(loadingHistoryFiles || loadingHistoryFileView) && (
+                  <Loader2 size={14} className="animate-spin text-text-muted" />
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-border-subtle bg-surface-0/80">
+                <div className="flex h-full min-h-0">
+                  <div className="w-72 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface-1/60">
+                    {!selectedHistoryCommit && (
+                      <p className="px-3 py-3 text-sm text-text-muted">Select a commit to inspect its changed files.</p>
+                    )}
+                    {selectedHistoryCommit && loadingHistoryFiles && (
+                      <div className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
+                        <Loader2 size={14} className="animate-spin" />
+                        Loading changed files...
+                      </div>
+                    )}
+                    {selectedHistoryCommit && !loadingHistoryFiles && historyFiles.length === 0 && (
+                      <p className="px-3 py-3 text-sm text-text-muted">No changed files found for this commit.</p>
+                    )}
+                    {selectedHistoryCommit &&
+                      !loadingHistoryFiles &&
+                      historyFiles.map((file) => (
+                        <button
+                          key={file.path}
+                          onClick={() => selectHistoryFile(file.path)}
+                          className={`w-full border-b border-border-subtle px-3 py-2 text-left transition-colors ${
+                            selectedHistoryFilePath === file.path
+                              ? 'bg-accent-muted/60 text-text-primary'
+                              : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                          }`}
+                        >
+                          <div className="mb-1 flex items-center justify-between gap-1">
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${statusBadgeClass(file.status)}`}
+                            >
+                              {file.status}
+                            </span>
+                            <div className="flex items-center gap-1 text-[10px] font-medium tabular-nums">
+                              <span className="text-success">+{file.additions}</span>
+                              <span className="text-danger">-{file.deletions}</span>
+                            </div>
+                          </div>
+                          <p className="truncate text-xs text-text-primary">{file.path}</p>
+                          {file.previousPath && file.previousPath !== file.path && (
+                            <p className="truncate text-[10px] text-text-muted">{file.previousPath} → {file.path}</p>
+                          )}
+                        </button>
+                      ))}
+                  </div>
+
+                  <div className="min-h-0 flex-1">
+                    {selectedHistoryFile && historyFileView ? (
+                      <MonacoDiffEditor
+                        key={`${selectedHistoryCommit || 'commit'}:${selectedHistoryFile.path}`}
+                        original={historyFileView.baseContent}
+                        modified={historyFileView.content}
+                        language={selectedHistoryLanguage}
+                        theme="vs-dark"
+                        options={historyDiffEditorOptions}
+                        loading={
+                          <div className="flex h-full items-center justify-center text-sm text-text-muted">
+                            Loading file changes...
+                          </div>
+                        }
+                      />
+                    ) : (
+                      <p className="p-3 text-sm text-text-muted">
+                        {selectedHistoryCommit ? 'Select a changed file to view its diff.' : 'Select a commit to view changes.'}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

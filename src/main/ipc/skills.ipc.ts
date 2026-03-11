@@ -11,9 +11,12 @@ export function registerSkillHandlers(): void {
     return readSkill(skillId);
   });
 
-  ipcMain.handle(IPC.SKILLS_CREATE, async (_, { name, content }: { name: string; content?: string }) => {
-    return createSkill(name, content);
-  });
+  ipcMain.handle(
+    IPC.SKILLS_CREATE,
+    async (_, { name, content, rootKey }: { name: string; content?: string; rootKey?: string }) => {
+      return createSkill(name, content, rootKey);
+    }
+  );
 
   ipcMain.handle(IPC.SKILLS_UPDATE, async (_, { skillId, content }: { skillId: string; content: string }) => {
     return updateSkill(skillId, content);

@@ -51,8 +51,21 @@ const api = {
   switchGitBranch: (params: { cwd: string; branch: string }) =>
     ipcRenderer.invoke(IPC.GIT_SWITCH_BRANCH, params),
   listGitChanges: (cwd: string) => ipcRenderer.invoke(IPC.GIT_LIST_CHANGES, cwd),
+  listGitHistory: (params: { cwd: string; limit?: number }) =>
+    ipcRenderer.invoke(IPC.GIT_LIST_HISTORY, params),
+  listGitCommitFiles: (params: { cwd: string; commit: string }) =>
+    ipcRenderer.invoke(IPC.GIT_LIST_COMMIT_FILES, params),
   getGitDiff: (params: { cwd: string; filePath: string }) =>
     ipcRenderer.invoke(IPC.GIT_GET_DIFF, params),
+  getGitCommitDiff: (params: { cwd: string; commit: string }) =>
+    ipcRenderer.invoke(IPC.GIT_GET_COMMIT_DIFF, params),
+  getGitCommitFileView: (params: {
+    cwd: string;
+    commit: string;
+    path: string;
+    previousPath?: string | null;
+    status?: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechanged' | 'changed';
+  }) => ipcRenderer.invoke(IPC.GIT_GET_COMMIT_FILE_VIEW, params),
   getGitFileView: (params: { cwd: string; filePath: string }) =>
     ipcRenderer.invoke(IPC.GIT_GET_FILE_VIEW, params),
   acceptGitFile: (params: { cwd: string; filePath: string }) =>
@@ -118,7 +131,7 @@ const api = {
   // Skills
   listSkills: (): Promise<SkillsOverview> => ipcRenderer.invoke(IPC.SKILLS_LIST),
   readSkill: (skillId: string): Promise<SkillDocument> => ipcRenderer.invoke(IPC.SKILLS_READ, skillId),
-  createSkill: (params: { name: string; content?: string }): Promise<SkillSummary> =>
+  createSkill: (params: { name: string; content?: string; rootKey?: string }): Promise<SkillSummary> =>
     ipcRenderer.invoke(IPC.SKILLS_CREATE, params),
   updateSkill: (params: { skillId: string; content: string }): Promise<SkillSummary> =>
     ipcRenderer.invoke(IPC.SKILLS_UPDATE, params),
