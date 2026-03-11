@@ -23,6 +23,9 @@ export const IPC = {
   GIT_GET_FILE_VIEW: 'git:get-file-view',
   GIT_ACCEPT_FILE: 'git:accept-file',
   GIT_REJECT_FILE: 'git:reject-file',
+  GIT_COMMIT: 'git:commit',
+  GIT_PUSH: 'git:push',
+  GIT_FETCH: 'git:fetch',
 
   // Auth (CLI-based)
   AUTH_STATUS: 'auth:status',

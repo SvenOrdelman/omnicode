@@ -31,6 +31,17 @@ export interface GitFileView {
   source: 'working_tree' | 'head';
 }
 
+export interface GitCommitParams {
+  title: string;
+  message?: string;
+  filePaths: string[];
+}
+
+export interface GitPushParams {
+  remote?: string;
+  branch?: string;
+}
+
 function ensureInsideRepo(cwd: string, filePath: string): string {
   const root = path.resolve(cwd);
   const absolute = path.resolve(root, filePath);
@@ -95,7 +106,7 @@ function describeStatus(staged: string, unstaged: string): string {
 
 export async function listGitChanges(cwd: string): Promise<GitChangedFile[]> {
   try {
-    const result = await runGit(cwd, ['status', '--porcelain']);
+    const result = await runGit(cwd, ['status', '--porcelain', '--untracked-files=all']);
     const changes = result.stdout
       .split('\n')
       .map((line) => line.trimEnd())
@@ -269,4 +280,65 @@ export async function rejectGitFile(cwd: string, filePath: string): Promise<void
 
   await runGit(cwd, ['checkout', '--', filePath]);
   await runGit(cwd, ['reset', 'HEAD', '--', filePath]).catch(() => '');
+}
+
+function toSafePathSpecs(cwd: string, filePaths: string[]): string[] {
+  const root = path.resolve(cwd);
+  const pathSpecs = filePaths
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const absolute = ensureInsideRepo(root, entry);
+      const relative = path.relative(root, absolute);
+      return relative.split(path.sep).join('/');
+    })
+    .filter(Boolean);
+
+  return Array.from(new Set(pathSpecs));
+}
+
+export async function commitGitChanges(cwd: string, params: GitCommitParams): Promise<void> {
+  const title = params.title.trim();
+  if (!title) {
+    throw new Error('Commit title is required.');
+  }
+
+  const pathSpecs = toSafePathSpecs(cwd, params.filePaths);
+  if (pathSpecs.length === 0) {
+    throw new Error('Select at least one file to commit.');
+  }
+
+  // Stage selected paths first so untracked files are recognized by git commit pathspecs.
+  await runGit(cwd, ['add', '--', ...pathSpecs]);
+
+  const args = ['commit', '-m', title];
+  const message = params.message?.trim();
+  if (message) {
+    args.push('-m', message);
+  }
+  args.push('--', ...pathSpecs);
+
+  await runGit(cwd, args);
+}
+
+export async function pushGitChanges(cwd: string, params?: GitPushParams): Promise<void> {
+  const remote = params?.remote?.trim() ?? '';
+  const branch = params?.branch?.trim() ?? '';
+
+  if (!remote && !branch) {
+    await runGit(cwd, ['push']);
+    return;
+  }
+
+  const resolvedRemote = remote || 'origin';
+  if (branch) {
+    await runGit(cwd, ['push', resolvedRemote, branch]);
+    return;
+  }
+
+  await runGit(cwd, ['push', resolvedRemote]);
+}
+
+export async function fetchGitChanges(cwd: string): Promise<void> {
+  await runGit(cwd, ['fetch', '--all', '--prune']);
 }

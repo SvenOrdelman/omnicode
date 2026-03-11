@@ -31,7 +31,9 @@ export function ChatView() {
             <Archive size={12} />
             Archive
           </button>
-          <span className="text-[11px] font-medium text-success">{currentProject ? currentProject.name : ''}</span>
+          <span className="max-w-[170px] truncate text-[11px] font-medium text-success">
+            {currentProject ? currentProject.name : ''}
+          </span>
         </div>
       </div>
 

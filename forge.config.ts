@@ -7,6 +7,11 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import AutoUnpackNativesPlugin from '@electron-forge/plugin-auto-unpack-natives';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+
+const iconBasePath = path.resolve(__dirname, 'assets/icon');
+const iconPngPath = `${iconBasePath}.png`;
+const iconIcoPath = `${iconBasePath}.ico`;
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -14,15 +19,26 @@ const config: ForgeConfig = {
       unpack: '**/node_modules/@anthropic-ai/**',
     },
     name: 'OmniCode',
+    icon: iconBasePath,
   },
   rebuildConfig: {
     ignoreModules: ['node-pty'],
   },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: iconIcoPath,
+    }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({
+      options: {
+        icon: iconPngPath,
+      },
+    }),
+    new MakerDeb({
+      options: {
+        icon: iconPngPath,
+      },
+    }),
   ],
   plugins: [
     new AutoUnpackNativesPlugin(),

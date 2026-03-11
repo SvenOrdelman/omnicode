@@ -10,6 +10,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
+    "generate:icon": "node scripts/generate-app-icon.mjs",
     "lint": "eslint --ext .ts,.tsx .",
     "postinstall": "node scripts/fix-node-pty-permissions.mjs"
   },

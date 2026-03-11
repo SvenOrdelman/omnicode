@@ -59,6 +59,11 @@ const api = {
     ipcRenderer.invoke(IPC.GIT_ACCEPT_FILE, params),
   rejectGitFile: (params: { cwd: string; filePath: string }) =>
     ipcRenderer.invoke(IPC.GIT_REJECT_FILE, params),
+  commitGitChanges: (params: { cwd: string; title: string; message?: string; filePaths: string[] }) =>
+    ipcRenderer.invoke(IPC.GIT_COMMIT, params),
+  pushGitChanges: (params: { cwd: string; remote?: string; branch?: string }) =>
+    ipcRenderer.invoke(IPC.GIT_PUSH, params),
+  fetchGitChanges: (cwd: string) => ipcRenderer.invoke(IPC.GIT_FETCH, cwd),
 
   // Auth (CLI-based)
   getAuthStatus: () => ipcRenderer.invoke(IPC.AUTH_STATUS),

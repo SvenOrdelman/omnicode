@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type View = 'chat' | 'automations' | 'skills' | 'settings' | 'welcome';
+type View = 'chat' | 'frequent-prompts' | 'automations' | 'skills' | 'settings' | 'welcome';
 type AgentMode = 'code' | 'plan' | 'ask';
 
 interface UIState {

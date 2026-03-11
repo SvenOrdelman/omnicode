@@ -151,10 +151,10 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
               <Plus size={17} />
             </button>
           </Tooltip>
-          <Tooltip label="Automations">
+          <Tooltip label="Frequent prompts">
             <button
-              onClick={() => setActiveView('automations')}
-              className={iconTabClass(activeView === 'automations')}
+              onClick={() => setActiveView('frequent-prompts')}
+              className={iconTabClass(activeView === 'frequent-prompts' || activeView === 'automations')}
             >
               <Workflow size={17} />
             </button>
@@ -215,11 +215,11 @@ export function Sidebar({ collapsed = false }: SidebarProps) {
           New thread
         </button>
         <button
-          onClick={() => setActiveView('automations')}
-          className={primaryTabClass(activeView === 'automations')}
+          onClick={() => setActiveView('frequent-prompts')}
+          className={primaryTabClass(activeView === 'frequent-prompts' || activeView === 'automations')}
         >
           <Workflow size={15} className="shrink-0" />
-          Automations
+          Frequent prompts
         </button>
         <button
           onClick={() => setActiveView('skills')}

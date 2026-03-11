@@ -7,6 +7,8 @@ import { ipc } from '../../lib/ipc-client';
 import { useChat } from '../../hooks/useChat';
 import { useUIStore } from '../../stores/ui.store';
 import { ResizeHandle } from '../layout/ResizeHandle';
+import { Modal } from '../common/Modal';
+import { GitBranchSwitcher } from '../chat/GitBranchSwitcher';
 
 interface ChangedFile {
   path: string;
@@ -22,6 +24,13 @@ interface GitFileView {
   removedLines: number[];
   source: 'working_tree' | 'head';
 }
+
+interface GitBranchInfo {
+  branches: string[];
+  current: string | null;
+}
+
+type GitAction = 'commit' | 'push' | 'fetch';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   ts: 'typescript',
@@ -146,6 +155,7 @@ export function RightPane() {
   const setActiveView = useUIStore((s) => s.setActiveView);
 
   const [changes, setChanges] = useState<ChangedFile[]>([]);
+  const [selectedForCommit, setSelectedForCommit] = useState<Record<string, boolean>>({});
   const [selectedChangeFile, setSelectedChangeFile] = useState<string | null>(null);
   const [fileView, setFileView] = useState<GitFileView | null>(null);
   const [editorDraft, setEditorDraft] = useState('');
@@ -153,7 +163,15 @@ export function RightPane() {
   const [loadingChanges, setLoadingChanges] = useState(false);
   const [loadingFileView, setLoadingFileView] = useState(false);
   const [savingFileEdit, setSavingFileEdit] = useState(false);
+  const [runningAction, setRunningAction] = useState<GitAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [commitDialogOpen, setCommitDialogOpen] = useState(false);
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [commitTitle, setCommitTitle] = useState('');
+  const [commitMessage, setCommitMessage] = useState('');
+  const [pushRemote, setPushRemote] = useState('origin');
+  const [pushBranch, setPushBranch] = useState('');
   const [changesListHeight, setChangesListHeight] = useState(DEFAULT_FILE_LIST_HEIGHT);
   const [splitContainerHeight, setSplitContainerHeight] = useState(0);
 
@@ -162,13 +180,20 @@ export function RightPane() {
   const saveFileEditRef = useRef<() => void>(() => undefined);
   const lastAutoRefreshAtRef = useRef(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const selectAllCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   const canEditSelectedFile = useMemo(
     () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree'),
     [fileView, selectedChangeFile]
   );
   const hasUnsavedEdit = canEditSelectedFile && editorDraft !== editorBaseContent;
-  const lockNavigation = hasUnsavedEdit || savingFileEdit;
+  const selectedCommitPaths = useMemo(
+    () => changes.filter((change) => selectedForCommit[change.path] !== false).map((change) => change.path),
+    [changes, selectedForCommit]
+  );
+  const allCommitFilesSelected = changes.length > 0 && selectedCommitPaths.length === changes.length;
+  const someCommitFilesSelected = selectedCommitPaths.length > 0 && !allCommitFilesSelected;
+  const lockNavigation = hasUnsavedEdit || savingFileEdit || runningAction !== null;
   const selectedLanguage = languageFromFilePath(selectedChangeFile);
   const maxChangesListHeight = useMemo(() => {
     if (splitContainerHeight <= 0) {
@@ -184,15 +209,23 @@ export function RightPane() {
     setError(null);
 
     try {
-      const projectChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
+      const [projectChanges, branchInfo]: [ChangedFile[], GitBranchInfo] = await Promise.all([
+        ipc().listGitChanges(currentProject.path),
+        ipc().listGitBranches(currentProject.path),
+      ]);
+
       setChanges(projectChanges);
+      setCurrentBranch(branchInfo.current);
       setSelectedChangeFile((previous) => {
-        if (previous) return previous;
+        if (!projectChanges.length) return null;
+        if (previous && projectChanges.some((change) => change.path === previous)) return previous;
         return projectChanges[0]?.path ?? null;
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load git changes');
       setChanges([]);
+      setSelectedChangeFile(null);
+      setCurrentBranch(null);
     } finally {
       setLoadingChanges(false);
     }
@@ -221,10 +254,14 @@ export function RightPane() {
   useEffect(() => {
     if (!currentProject) {
       setChanges([]);
+      setSelectedForCommit({});
       setSelectedChangeFile(null);
       setFileView(null);
       setEditorDraft('');
       setEditorBaseContent('');
+      setCurrentBranch(null);
+      setCommitDialogOpen(false);
+      setPushDialogOpen(false);
       setChangesListHeight(DEFAULT_FILE_LIST_HEIGHT);
       return;
     }
@@ -232,15 +269,36 @@ export function RightPane() {
     loadChanges().catch(() => undefined);
   }, [currentProject, loadChanges]);
 
+  useEffect(() => {
+    setSelectedForCommit((previous) => {
+      const next: Record<string, boolean> = {};
+      for (const change of changes) {
+        next[change.path] = previous[change.path] ?? true;
+      }
+      return next;
+    });
+  }, [changes]);
+
+  useEffect(() => {
+    if (!selectAllCheckboxRef.current) return;
+    selectAllCheckboxRef.current.indeterminate = someCommitFilesSelected;
+  }, [someCommitFilesSelected]);
+
   const refreshOnWindowActive = useCallback(async () => {
     if (!currentProject || lockNavigation) return;
 
     try {
-      const updatedChanges: ChangedFile[] = await ipc().listGitChanges(currentProject.path);
+      const [updatedChanges, branchInfo]: [ChangedFile[], GitBranchInfo] = await Promise.all([
+        ipc().listGitChanges(currentProject.path),
+        ipc().listGitBranches(currentProject.path),
+      ]);
       setChanges(updatedChanges);
+      setCurrentBranch(branchInfo.current);
 
-      const activeFile = selectedChangeFile || updatedChanges[0]?.path || null;
-      if (!selectedChangeFile && activeFile) {
+      const activeFile = updatedChanges.some((change) => change.path === selectedChangeFile)
+        ? selectedChangeFile
+        : (updatedChanges[0]?.path ?? null);
+      if (activeFile !== selectedChangeFile) {
         setSelectedChangeFile(activeFile);
       }
 
@@ -321,6 +379,105 @@ export function RightPane() {
     },
     [hasUnsavedEdit, selectedChangeFile]
   );
+
+  const toggleFileForCommit = useCallback((filePath: string, selected: boolean) => {
+    setSelectedForCommit((previous) => ({
+      ...previous,
+      [filePath]: selected,
+    }));
+  }, []);
+
+  const toggleAllFilesForCommit = useCallback(
+    (selected: boolean) => {
+      setSelectedForCommit((previous) => {
+        const next = { ...previous };
+        for (const change of changes) {
+          next[change.path] = selected;
+        }
+        return next;
+      });
+    },
+    [changes]
+  );
+
+  const openCommitDialog = useCallback(() => {
+    if (lockNavigation || !currentProject) return;
+    setCommitDialogOpen(true);
+  }, [currentProject, lockNavigation]);
+
+  const openPushDialog = useCallback(() => {
+    if (lockNavigation || !currentProject) return;
+    setPushBranch(currentBranch || '');
+    setPushDialogOpen(true);
+  }, [currentBranch, currentProject, lockNavigation]);
+
+  const handleFetch = useCallback(async () => {
+    if (!currentProject || lockNavigation) return;
+    setRunningAction('fetch');
+    setError(null);
+
+    try {
+      await ipc().fetchGitChanges(currentProject.path);
+      await loadChanges();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch remote changes');
+    } finally {
+      setRunningAction(null);
+    }
+  }, [currentProject, loadChanges, lockNavigation]);
+
+  const handleCommit = useCallback(async () => {
+    if (!currentProject || lockNavigation) return;
+    const title = commitTitle.trim();
+    if (!title) {
+      setError('Commit title is required.');
+      return;
+    }
+    if (selectedCommitPaths.length === 0) {
+      setError('Select at least one file to commit.');
+      return;
+    }
+
+    setRunningAction('commit');
+    setError(null);
+
+    try {
+      await ipc().commitGitChanges({
+        cwd: currentProject.path,
+        title,
+        message: commitMessage.trim() || undefined,
+        filePaths: selectedCommitPaths,
+      });
+      setCommitDialogOpen(false);
+      setCommitTitle('');
+      setCommitMessage('');
+      await loadChanges();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create commit');
+    } finally {
+      setRunningAction(null);
+    }
+  }, [commitMessage, commitTitle, currentProject, loadChanges, lockNavigation, selectedCommitPaths]);
+
+  const handlePush = useCallback(async () => {
+    if (!currentProject || lockNavigation) return;
+    setRunningAction('push');
+    setError(null);
+
+    try {
+      await ipc().pushGitChanges({
+        cwd: currentProject.path,
+        remote: pushRemote.trim() || undefined,
+        branch: pushBranch.trim() || undefined,
+      });
+      setPushDialogOpen(false);
+      await loadChanges();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to push changes');
+    } finally {
+      setRunningAction(null);
+    }
+  }, [currentProject, loadChanges, lockNavigation, pushBranch, pushRemote]);
 
   const sendLineCommentToChat = useCallback(
     (lineNumber: number, sourceContent: string) => {
@@ -479,19 +636,58 @@ export function RightPane() {
   return (
     <div className="flex h-full flex-col bg-surface-1/90">
       <div className="border-b border-border-subtle px-3 py-2.5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Changes</p>
-          <button
-            onClick={() => {
-              if (lockNavigation) return;
-              loadChanges().catch(() => undefined);
-            }}
-            disabled={lockNavigation}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            <RefreshCw size={12} />
-            Refresh
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Changes</p>
+            <p className="text-[11px] text-text-muted">
+              {selectedCommitPaths.length}/{changes.length} selected for commit
+              {currentBranch ? ` • ${currentBranch}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <GitBranchSwitcher />
+            <button
+              onClick={openCommitDialog}
+              disabled={lockNavigation || changes.length === 0}
+              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              title="Create a commit from selected files"
+            >
+              {runningAction === 'commit' ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              Commit
+            </button>
+            <button
+              onClick={openPushDialog}
+              disabled={lockNavigation}
+              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              title="Push committed changes to remote"
+            >
+              {runningAction === 'push' ? <Loader2 size={12} className="animate-spin" /> : null}
+              Push
+            </button>
+            <button
+              onClick={() => {
+                handleFetch().catch(() => undefined);
+              }}
+              disabled={lockNavigation}
+              className="inline-flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              title="Fetch updates from remote"
+            >
+              {runningAction === 'fetch' ? <Loader2 size={12} className="animate-spin" /> : null}
+              Fetch
+            </button>
+            <button
+              onClick={() => {
+                if (lockNavigation) return;
+                loadChanges().catch(() => undefined);
+              }}
+              disabled={lockNavigation}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-45"
+              title="Refresh local git status"
+            >
+              <RefreshCw size={12} />
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 
@@ -516,23 +712,52 @@ export function RightPane() {
             {!loadingChanges && changes.length === 0 && (
               <p className="px-3 py-2 text-sm text-text-muted">No local changes detected.</p>
             )}
+            {!loadingChanges && changes.length > 0 && (
+              <div className="flex items-center justify-between border-b border-border-subtle bg-surface-1/60 px-3 py-1.5 text-xs text-text-muted">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    ref={selectAllCheckboxRef}
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-border-default bg-surface-2"
+                    checked={allCommitFilesSelected}
+                    onChange={(event) => toggleAllFilesForCommit(event.target.checked)}
+                  />
+                  Select all
+                </label>
+                <span>{selectedCommitPaths.length} selected</span>
+              </div>
+            )}
             {!loadingChanges &&
               changes.map((change) => (
-                <button
+                <div
                   key={change.path}
-                  onClick={() => selectChangeFile(change.path)}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+                  className={`flex items-center gap-2 px-3 py-2 transition-colors ${
                     selectedChangeFile === change.path
                       ? 'bg-accent-muted/60 text-text-primary'
                       : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                   }`}
                 >
-                  <FileCode2 size={13} className="shrink-0" />
-                  <span className="min-w-0 flex-1 truncate text-sm">{change.path}</span>
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${statusBadgeClass(change.status)}`}>
-                    {change.status}
-                  </span>
-                </button>
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 shrink-0 rounded border-border-default bg-surface-2"
+                    checked={selectedForCommit[change.path] !== false}
+                    onChange={(event) => toggleFileForCommit(change.path, event.target.checked)}
+                    onClick={(event) => event.stopPropagation()}
+                    aria-label={`Include ${change.path} in commit`}
+                  />
+                  <button
+                    onClick={() => selectChangeFile(change.path)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <FileCode2 size={13} className="shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-sm">{change.path}</span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${statusBadgeClass(change.status)}`}
+                    >
+                      {change.status}
+                    </span>
+                  </button>
+                </div>
               ))}
           </div>
 
@@ -599,6 +824,125 @@ export function RightPane() {
           </div>
         </div>
       )}
+
+      <Modal open={commitDialogOpen} onClose={() => setCommitDialogOpen(false)} title="Commit Changes">
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCommit().catch(() => undefined);
+          }}
+        >
+          <div className="space-y-1.5">
+            <label htmlFor="commit-title" className="text-sm font-medium text-text-secondary">
+              Title
+            </label>
+            <input
+              id="commit-title"
+              value={commitTitle}
+              onChange={(event) => setCommitTitle(event.target.value)}
+              placeholder="Short commit title"
+              className="w-full rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
+              disabled={runningAction === 'commit'}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="commit-message" className="text-sm font-medium text-text-secondary">
+              Message
+            </label>
+            <textarea
+              id="commit-message"
+              value={commitMessage}
+              onChange={(event) => setCommitMessage(event.target.value)}
+              placeholder="Optional commit description"
+              rows={4}
+              className="w-full resize-y rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
+              disabled={runningAction === 'commit'}
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            {selectedCommitPaths.length} file{selectedCommitPaths.length === 1 ? '' : 's'} will be included.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setCommitDialogOpen(false)}
+              className="rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
+              disabled={runningAction === 'commit'}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={runningAction === 'commit' || selectedCommitPaths.length === 0 || !commitTitle.trim()}
+            >
+              {runningAction === 'commit' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Commit
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={pushDialogOpen} onClose={() => setPushDialogOpen(false)} title="Push Changes">
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handlePush().catch(() => undefined);
+          }}
+        >
+          <div className="space-y-1.5">
+            <label htmlFor="push-remote" className="text-sm font-medium text-text-secondary">
+              Remote
+            </label>
+            <input
+              id="push-remote"
+              value={pushRemote}
+              onChange={(event) => setPushRemote(event.target.value)}
+              placeholder="origin"
+              className="w-full rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
+              disabled={runningAction === 'push'}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="push-branch" className="text-sm font-medium text-text-secondary">
+              Branch
+            </label>
+            <input
+              id="push-branch"
+              value={pushBranch}
+              onChange={(event) => setPushBranch(event.target.value)}
+              placeholder={currentBranch || 'Current tracking branch'}
+              className="w-full rounded-lg border border-border-default bg-surface-2 px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
+              disabled={runningAction === 'push'}
+            />
+          </div>
+          <p className="text-xs text-text-muted">
+            Pushes your local commits to the configured remote. Leave fields empty to use git defaults.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPushDialogOpen(false)}
+              className="rounded-md border border-border-default px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
+              disabled={runningAction === 'push'}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={runningAction === 'push'}
+            >
+              {runningAction === 'push' ? <Loader2 size={14} className="animate-spin" /> : null}
+              Push
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {error && <p className="border-t border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
     </div>

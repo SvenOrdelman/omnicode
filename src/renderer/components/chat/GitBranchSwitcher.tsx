@@ -85,7 +85,7 @@ export function GitBranchSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 w-56 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
+        <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
           <div className="max-h-56 overflow-y-auto">
             {branchState.branches.map((branch) => {
               const active = branch === branchState.current;

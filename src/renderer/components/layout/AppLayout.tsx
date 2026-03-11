@@ -7,7 +7,7 @@ import { SettingsPanel } from '../settings/SettingsPanel';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ResizeHandle } from './ResizeHandle';
 import { RightPane } from '../explorer/RightPane';
-import { AutomationsPanel } from '../automations/AutomationsPanel';
+import { FrequentPromptsPanel } from '../frequent-prompts/FrequentPromptsPanel';
 import { SkillsPanel } from '../skills/SkillsPanel';
 
 const FRAME_PADDING = 8;
@@ -171,8 +171,9 @@ export function AppLayout() {
 
   const renderCenter = () => {
     switch (activeView) {
+      case 'frequent-prompts':
       case 'automations':
-        return <AutomationsPanel />;
+        return <FrequentPromptsPanel />;
       case 'skills':
         return <SkillsPanel />;
       case 'settings':
