@@ -4,14 +4,24 @@ import { useApprovalStore } from '../stores/approval.store';
 import type { ApprovalRequest } from '../../shared/provider-types';
 
 export function useApproval() {
-  const { pending, addRequest, removeRequest } = useApprovalStore();
+  const { pending, addRequest, removeRequest, removeSessionRequests } = useApprovalStore();
 
   useEffect(() => {
-    const unsub = ipc().onApprovalRequest((request: ApprovalRequest) => {
+    const unsubApproval = ipc().onApprovalRequest((request: ApprovalRequest) => {
       addRequest(request);
     });
-    return () => { unsub(); };
-  }, [addRequest]);
+    const unsubEnd = ipc().onStreamEnd(({ sessionId }) => {
+      removeSessionRequests(sessionId);
+    });
+    const unsubError = ipc().onStreamError(({ sessionId }) => {
+      removeSessionRequests(sessionId);
+    });
+    return () => {
+      unsubApproval();
+      unsubEnd();
+      unsubError();
+    };
+  }, [addRequest, removeSessionRequests]);
 
   const respond = useCallback(
     (id: string, approved: boolean) => {

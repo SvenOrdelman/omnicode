@@ -8,6 +8,7 @@ import type {
 } from '../shared/provider-types';
 import type { SkillDocument, SkillsOverview, SkillSummary } from '../shared/skill-types';
 import type { RemoteAutomationConfig } from '../shared/automation-types';
+import type { ClaudeCommandCatalog } from '../shared/claude-command-types';
 
 const api = {
   // Chat
@@ -121,6 +122,10 @@ const api = {
   },
   respondApproval: (id: string, approved: boolean) =>
     ipcRenderer.send(IPC.APPROVAL_RESPOND, { id, approved }),
+
+  // Claude Commands
+  listClaudeCommands: (forceRefresh?: boolean): Promise<ClaudeCommandCatalog> =>
+    ipcRenderer.invoke(IPC.CLAUDE_COMMANDS_LIST, { forceRefresh }),
 
   // Automations
   getRemoteAutomationConfig: (): Promise<RemoteAutomationConfig> =>

@@ -313,11 +313,12 @@ export function useChat() {
       if (!result) return;
 
       setActiveSession(result.session);
+      setSessionCompleted(sessionId, false);
 
       const parsed: ProviderMessage[] = result.messages.map(parseStoredMessage);
       setMessages(parsed);
     },
-    [parseStoredMessage, setActiveSession, setMessages]
+    [parseStoredMessage, setActiveSession, setMessages, setSessionCompleted]
   );
 
   const newChat = useCallback(async () => {

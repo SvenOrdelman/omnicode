@@ -9,6 +9,7 @@ interface MessageListProps {
   isStreaming: boolean;
   activityLines: string[];
   repoName?: string;
+  onRunCommand?: (command: string) => void;
 }
 
 interface TimelineMessageItem {
@@ -34,7 +35,7 @@ function extractUserCancelledEventText(message: ProviderMessage): string | null 
   return eventBlock.text;
 }
 
-export function MessageList({ messages, isStreaming, activityLines, repoName }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityLines, repoName, onRunCommand }: MessageListProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const timelineItems = messages.reduce<TimelineItem[]>((items, message) => {
     const cancelledText = extractUserCancelledEventText(message);
@@ -83,7 +84,7 @@ export function MessageList({ messages, isStreaming, activityLines, repoName }: 
             );
           }
 
-          return <MessageBubble key={item.id} message={item.message} />;
+          return <MessageBubble key={item.id} message={item.message} onRunCommand={onRunCommand} />;
         })}
         {isStreaming && <StreamingIndicator activityLines={activityLines} />}
         <div ref={endRef} />

@@ -12,7 +12,7 @@ export interface SendPromptOptions {
   sdkSessionId?: string;
   onMessage: (message: ProviderMessage) => void;
   onDelta: (delta: ProviderStreamDelta) => void;
-  onApprovalRequest: (request: ApprovalRequest) => Promise<boolean>;
+  onApprovalRequest: (request: ApprovalRequest) => void;
   onEnd: () => void;
   onError: (error: Error) => void;
 }

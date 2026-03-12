@@ -8,6 +8,7 @@ import { registerGitHandlers } from './git.ipc';
 import { registerExplorerHandlers } from './explorer.ipc';
 import { registerAutomationHandlers } from './automations.ipc';
 import { registerSkillHandlers } from './skills.ipc';
+import { registerClaudeCommandHandlers } from './claude-commands.ipc';
 
 export function registerAllHandlers(): void {
   registerChatHandlers();
@@ -20,4 +21,5 @@ export function registerAllHandlers(): void {
   registerExplorerHandlers();
   registerAutomationHandlers();
   registerSkillHandlers();
+  registerClaudeCommandHandlers();
 }

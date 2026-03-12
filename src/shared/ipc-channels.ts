@@ -56,6 +56,9 @@ export const IPC = {
   APPROVAL_REQUEST: 'approval:request',
   APPROVAL_RESPOND: 'approval:respond',
 
+  // Claude Commands
+  CLAUDE_COMMANDS_LIST: 'claude-commands:list',
+
   // Automations
   AUTOMATIONS_GET_REMOTE_URL: 'automations:get-remote-url',
   AUTOMATIONS_OPEN_REMOTE: 'automations:open-remote',

@@ -29,19 +29,10 @@ export function registerChatHandlers(): void {
             window.webContents.send(IPC.CHAT_STREAM_MESSAGE, { sessionId, delta });
           }
         },
-        onApprovalRequest: async (request) => {
-          if (window.isDestroyed()) return false;
-          window.webContents.send(IPC.APPROVAL_REQUEST, request);
-          // The approval response comes through a separate IPC channel
-          return new Promise((resolve) => {
-            const handler = (_: any, response: { id: string; approved: boolean }) => {
-              if (response.id === request.id) {
-                ipcMain.removeListener(IPC.APPROVAL_RESPOND, handler);
-                resolve(response.approved);
-              }
-            };
-            ipcMain.on(IPC.APPROVAL_RESPOND, handler);
-          });
+        onApprovalRequest: (request) => {
+          if (!window.isDestroyed()) {
+            window.webContents.send(IPC.APPROVAL_REQUEST, request);
+          }
         },
         onEnd: () => {
           if (!window.isDestroyed()) {

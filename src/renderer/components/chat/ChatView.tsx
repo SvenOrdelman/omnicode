@@ -43,6 +43,7 @@ export function ChatView() {
         isStreaming={isStreaming}
         activityLines={activityLines}
         repoName={currentProject?.name}
+        onRunCommand={sendPrompt}
       />
 
       {/* Error banner */}

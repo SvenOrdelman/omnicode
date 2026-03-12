@@ -1,5 +1,5 @@
 import React from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Wrench, AlertCircle, Brain } from 'lucide-react';
@@ -14,6 +14,7 @@ import { Avatar } from '../common/Avatar';
 
 interface MessageBubbleProps {
   message: ProviderMessage;
+  onRunCommand?: (command: string) => void;
 }
 
 function asString(value: unknown): string | null {
@@ -72,43 +73,86 @@ function summarizeToolResult(content: ProviderToolResultContent): string {
   return `${lines} lines of output`;
 }
 
-const markdownComponents: Components = {
-  ul({ children }) {
-    return <ul className="list-disc pl-5">{children}</ul>;
-  },
-  ol({ children }) {
-    return <ol className="list-decimal pl-5">{children}</ol>;
-  },
-  li({ children, className }) {
-    return <li className={className}>{children}</li>;
-  },
-  table({ children }) {
-    return (
-      <div className="my-2 overflow-x-auto rounded-md border border-border-default">
-        <table className="min-w-full border-collapse">{children}</table>
-      </div>
-    );
-  },
-  code({ className, children, ...props }) {
-    const match = /language-([\w-]+)/.exec(className || '');
-    const codeStr = String(children).replace(/\n$/, '');
-    if (match) {
-      return <CodeBlock language={match[1]} code={codeStr} />;
-    }
-    return (
-      <code className="rounded-md px-1.5 py-0.5 text-[12px]" {...props}>
-        {children}
-      </code>
-    );
-  },
-};
+function decodeCommandHref(href: string): string | null {
+  if (href.startsWith('command://')) {
+    return decodeURIComponent(href.slice('command://'.length));
+  }
+  if (href.startsWith('command:')) {
+    return decodeURIComponent(href.slice('command:'.length));
+  }
+  return null;
+}
 
-function renderContent(content: ProviderContent) {
+function allowCommandUrlTransform(url: string): string {
+  if (/^command:/i.test(url)) {
+    return url;
+  }
+  return defaultUrlTransform(url);
+}
+
+function createMarkdownComponents(onRunCommand?: (command: string) => void): Components {
+  return {
+    ul({ children }) {
+      return <ul className="list-disc pl-5">{children}</ul>;
+    },
+    ol({ children }) {
+      return <ol className="list-decimal pl-5">{children}</ol>;
+    },
+    li({ children, className }) {
+      return <li className={className}>{children}</li>;
+    },
+    table({ children }) {
+      return (
+        <div className="my-2 overflow-x-auto rounded-md border border-border-default">
+          <table className="min-w-full border-collapse">{children}</table>
+        </div>
+      );
+    },
+    a({ href, children }) {
+      const url = href || '';
+      const command = decodeCommandHref(url);
+      if (command && onRunCommand) {
+        return (
+          <button
+            type="button"
+            onClick={() => onRunCommand(command)}
+            className="rounded-md border border-border-default bg-surface-2 px-1.5 py-0.5 text-[11px] text-accent hover:border-border-strong hover:text-accent-hover transition-colors"
+          >
+            {children}
+          </button>
+        );
+      }
+      return (
+        <a href={url} target="_blank" rel="noreferrer">
+          {children}
+        </a>
+      );
+    },
+    code({ className, children, ...props }) {
+      const match = /language-([\w-]+)/.exec(className || '');
+      const codeStr = String(children).replace(/\n$/, '');
+      if (match) {
+        return <CodeBlock language={match[1]} code={codeStr} />;
+      }
+      return (
+        <code className="rounded-md px-1.5 py-0.5 text-[12px]" {...props}>
+          {children}
+        </code>
+      );
+    },
+  };
+}
+
+function renderContent(content: ProviderContent, onRunCommand?: (command: string) => void) {
   switch (content.type) {
     case 'text':
       return (
         <div className="markdown-body max-w-none break-words">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={createMarkdownComponents(onRunCommand)}
+            urlTransform={allowCommandUrlTransform}
+          >
             {content.text}
           </ReactMarkdown>
         </div>
@@ -175,7 +219,7 @@ function renderContent(content: ProviderContent) {
   }
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onRunCommand }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const label = isUser ? 'You' : message.role === 'tool' ? 'Claude logs' : 'Claude';
 
@@ -195,7 +239,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </div>
         <div className="space-y-2.5 px-0.5 text-[13px]">
           {message.content.map((c, i) => (
-            <React.Fragment key={i}>{renderContent(c)}</React.Fragment>
+            <React.Fragment key={i}>{renderContent(c, onRunCommand)}</React.Fragment>
           ))}
         </div>
       </div>

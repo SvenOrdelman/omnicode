@@ -136,6 +136,19 @@ export function adaptSdkMessage(sdkMessage: any): ProviderMessage | null {
 
   // System message (init, etc.)
   if (sdkMessage.type === 'system') {
+    if (sdkMessage.subtype === 'init') {
+      return null;
+    }
+
+    if (sdkMessage.subtype === 'local_command_output' && typeof sdkMessage.content === 'string') {
+      return {
+        id: uuid(),
+        role: 'assistant',
+        content: [{ type: 'text', text: sdkMessage.content }],
+        timestamp: Date.now(),
+      };
+    }
+
     if (
       (sdkMessage.subtype === 'task_progress' ||
         sdkMessage.subtype === 'task_started' ||
@@ -154,6 +167,17 @@ export function adaptSdkMessage(sdkMessage: any): ProviderMessage | null {
       id: uuid(),
       role: 'system',
       content: [{ type: 'text', text: sdkMessage.subtype || 'system' }],
+      timestamp: Date.now(),
+    };
+  }
+
+  if (sdkMessage.type === 'auth_status' && Array.isArray(sdkMessage.output)) {
+    const output = sdkMessage.output.join('\n').trim();
+    if (!output) return null;
+    return {
+      id: uuid(),
+      role: 'tool',
+      content: [{ type: 'text', text: output }],
       timestamp: Date.now(),
     };
   }
