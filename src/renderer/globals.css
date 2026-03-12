@@ -32,28 +32,28 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-surface-0: #f5f5f5;
-  --color-surface-1: #ffffff;
-  --color-surface-2: #f3f3f3;
-  --color-surface-3: #ebebeb;
+  --color-surface-0: #f6f1e7;
+  --color-surface-1: #fcf8f0;
+  --color-surface-2: #f5efe3;
+  --color-surface-3: #ece3d3;
 
-  --color-border-subtle: #dfdfdf;
-  --color-border-default: #d0d0d0;
-  --color-border-strong: #bdbdbd;
+  --color-border-subtle: #ddd2bf;
+  --color-border-default: #cfc1aa;
+  --color-border-strong: #b9a98f;
 
-  --color-accent: #0b62d6;
-  --color-accent-hover: #005fb8;
-  --color-accent-muted: #0b62d61a;
-  --color-accent-warm: #9e8459;
-  --color-accent-cool: #52718a;
+  --color-accent: #2f6fb5;
+  --color-accent-hover: #245f9e;
+  --color-accent-muted: #2f6fb51a;
+  --color-accent-warm: #9c7a4d;
+  --color-accent-cool: #55727d;
 
-  --color-text-primary: #1f1f1f;
-  --color-text-secondary: #3f3f3f;
-  --color-text-muted: #666666;
+  --color-text-primary: #2b241c;
+  --color-text-secondary: #4a4136;
+  --color-text-muted: #74695a;
 
-  --color-success: #2e7d32;
-  --color-warning: #8a6d1a;
-  --color-danger: #b71c1c;
+  --color-success: #4f7e57;
+  --color-warning: #8c6e2f;
+  --color-danger: #b65151;
 }
 
 *,
@@ -80,9 +80,9 @@ html[data-theme='light'],
 html[data-theme='light'] body,
 html[data-theme='light'] #root {
   background-image:
-    radial-gradient(900px 540px at 4% -16%, rgba(0, 0, 0, 0.035), transparent 66%),
-    radial-gradient(760px 420px at 102% 124%, rgba(0, 0, 0, 0.025), transparent 72%),
-    radial-gradient(460px 320px at 92% 10%, rgba(255, 255, 255, 0.35), transparent 74%);
+    radial-gradient(900px 540px at 4% -16%, rgba(143, 117, 79, 0.08), transparent 66%),
+    radial-gradient(760px 420px at 102% 124%, rgba(201, 171, 118, 0.07), transparent 72%),
+    radial-gradient(460px 320px at 92% 10%, rgba(255, 255, 255, 0.45), transparent 74%);
 }
 
 /* Scrollbar styling */
@@ -105,11 +105,11 @@ html[data-theme='light'] #root {
 }
 
 html[data-theme='light'] ::-webkit-scrollbar-thumb {
-  background: #c4c4c4;
+  background: #c9bda8;
 }
 
 html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
-  background: #adadad;
+  background: #b5a78f;
 }
 
 /* Glass utility */
@@ -368,41 +368,41 @@ html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
 :root[data-theme='light'] .markdown-body h2,
 :root[data-theme='light'] .markdown-body h3,
 :root[data-theme='light'] .markdown-body h4 {
-  color: #1f1f1f;
+  color: #2b241c;
 }
 
 :root[data-theme='light'] .markdown-body blockquote {
-  border-left-color: rgba(122, 122, 122, 0.45);
-  background: rgba(0, 0, 0, 0.03);
-  color: #3a3a3a;
+  border-left-color: rgba(143, 123, 90, 0.5);
+  background: rgba(143, 123, 90, 0.1);
+  color: #4c3f30;
 }
 
 :root[data-theme='light'] .markdown-body a {
-  color: #0b62d6;
-  text-decoration-color: rgba(11, 98, 214, 0.45);
+  color: #2f6fb5;
+  text-decoration-color: rgba(47, 111, 181, 0.45);
 }
 
 :root[data-theme='light'] .markdown-body a:hover {
-  color: #084b9f;
+  color: #24558a;
 }
 
 :root[data-theme='light'] .markdown-body th {
-  background: rgba(0, 0, 0, 0.05);
-  color: #232323;
+  background: rgba(143, 123, 90, 0.12);
+  color: #3b3024;
 }
 
 :root[data-theme='light'] .markdown-body tr:nth-child(even) td {
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(143, 123, 90, 0.06);
 }
 
 :root[data-theme='light'] .markdown-body :not(pre) > code {
-  color: #6b2445;
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.14);
+  color: #633b2a;
+  background: rgba(140, 110, 80, 0.16);
+  border-color: rgba(122, 93, 64, 0.26);
 }
 
 :root[data-theme='light'] .code-block-code {
-  color: #1f1f1f;
+  color: #2b241c;
 }
 
 :root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-comment,
@@ -455,7 +455,7 @@ html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
 }
 
 :root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-subst {
-  color: #1f1f1f;
+  color: #2b241c;
 }
 
 :root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-meta,

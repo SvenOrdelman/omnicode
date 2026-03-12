@@ -74,10 +74,10 @@ export function TerminalPanel() {
 
     const term = new Terminal({
       theme: {
-        background: theme === 'light' ? '#ffffff' : '#1e1e1e',
-        foreground: theme === 'light' ? '#1f1f1f' : '#d4d4d4',
-        cursor: theme === 'light' ? '#1f1f1f' : '#aeafad',
-        selectionBackground: theme === 'light' ? '#add6ff' : '#3a3d41',
+        background: theme === 'light' ? '#fcf8f0' : '#1e1e1e',
+        foreground: theme === 'light' ? '#2b241c' : '#d4d4d4',
+        cursor: theme === 'light' ? '#3b3025' : '#aeafad',
+        selectionBackground: theme === 'light' ? '#dde8f4' : '#3a3d41',
       },
       fontFamily: 'SF Mono, Menlo, Monaco, monospace',
       fontSize: 13,
