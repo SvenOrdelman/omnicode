@@ -90,6 +90,19 @@ function allowCommandUrlTransform(url: string): string {
   return defaultUrlTransform(url);
 }
 
+function extractCodeFromPre(children: React.ReactNode): { language?: string; code: string } {
+  const firstChild = React.Children.toArray(children)[0];
+
+  if (React.isValidElement(firstChild)) {
+    const className = typeof firstChild.props.className === 'string' ? firstChild.props.className : '';
+    const match = /language-([\w-]+)/.exec(className);
+    const raw = String(firstChild.props.children ?? '').replace(/\n$/, '');
+    return { language: match?.[1], code: raw };
+  }
+
+  return { code: String(children ?? '').replace(/\n$/, '') };
+}
+
 function createMarkdownComponents(onRunCommand?: (command: string) => void): Components {
   return {
     ul({ children }) {
@@ -128,14 +141,13 @@ function createMarkdownComponents(onRunCommand?: (command: string) => void): Com
         </a>
       );
     },
+    pre({ children }) {
+      const { language, code } = extractCodeFromPre(children);
+      return <CodeBlock language={language} code={code} />;
+    },
     code({ className, children, ...props }) {
-      const match = /language-([\w-]+)/.exec(className || '');
-      const codeStr = String(children).replace(/\n$/, '');
-      if (match) {
-        return <CodeBlock language={match[1]} code={codeStr} />;
-      }
       return (
-        <code className="rounded-md px-1.5 py-0.5 text-[12px]" {...props}>
+        <code className={`rounded-md px-1.5 py-0.5 text-[12px] ${className || ''}`.trim()} {...props}>
           {children}
         </code>
       );

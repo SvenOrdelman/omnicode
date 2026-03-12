@@ -1,4 +1,5 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import hljs from 'highlight.js/lib/common';
 import { FileCode2, Copy, Check } from 'lucide-react';
 
 interface CodeBlockProps {
@@ -6,8 +7,45 @@ interface CodeBlockProps {
   code: string;
 }
 
+const LANGUAGE_ALIASES: Record<string, string> = {
+  rb: 'ruby',
+  shell: 'bash',
+  sh: 'bash',
+  zsh: 'bash',
+  yml: 'yaml',
+};
+
+function resolveLanguage(language?: string): string | null {
+  if (!language) return null;
+  const normalized = language.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const mapped = LANGUAGE_ALIASES[normalized] ?? normalized;
+  return hljs.getLanguage(mapped) ? mapped : null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 export function CodeBlock({ language, code }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
+  const activeLanguage = useMemo(() => resolveLanguage(language), [language]);
+  const highlightedCode = useMemo(() => {
+    try {
+      if (activeLanguage) {
+        return hljs.highlight(code, { language: activeLanguage, ignoreIllegals: true }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    } catch {
+      return escapeHtml(code);
+    }
+  }, [activeLanguage, code]);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -40,7 +78,10 @@ export function CodeBlock({ language, code }: CodeBlockProps) {
         </button>
       </div>
       <pre className="overflow-x-auto p-3 text-[12px] leading-5">
-        <code className={language ? `language-${language}` : ''}>{code}</code>
+        <code
+          className={`code-block-code ${activeLanguage ? `language-${activeLanguage}` : ''}`.trim()}
+          dangerouslySetInnerHTML={{ __html: highlightedCode }}
+        />
       </pre>
     </div>
   );

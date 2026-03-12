@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, Shield, LogIn, LogOut, Info } from 'lucide-react';
+import { Settings, Shield, LogIn, LogOut, Info, Palette, Moon, Sun } from 'lucide-react';
 import { ipc } from '../../lib/ipc-client';
 import { useAuthStore } from '../../stores/auth.store';
+import { useUIStore } from '../../stores/ui.store';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
 
 export function SettingsPanel() {
   const { installed, authenticated, account, isLoggingIn, setAuthStatus, setIsLoggingIn } =
     useAuthStore();
+  const theme = useUIStore((s) => s.theme);
+  const setTheme = useUIStore((s) => s.setTheme);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
@@ -57,6 +60,42 @@ export function SettingsPanel() {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-lg space-y-8">
+          {/* Appearance */}
+          <section>
+            <div className="mb-4 flex items-center gap-2">
+              <Palette size={18} className="text-text-muted" />
+              <h3 className="text-lg font-semibold text-text-primary">Appearance</h3>
+            </div>
+
+            <div className="rounded-xl border border-border-default bg-surface-2 p-4">
+              <div className="mb-2 text-sm font-medium text-text-primary">Theme</div>
+              <div className="inline-flex items-center rounded-lg border border-border-default bg-surface-1 p-0.5">
+                <button
+                  onClick={() => setTheme('dark')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-surface-3 text-text-primary shadow-sm'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  <Moon size={13} />
+                  Dark
+                </button>
+                <button
+                  onClick={() => setTheme('light')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    theme === 'light'
+                      ? 'bg-surface-3 text-text-primary shadow-sm'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  <Sun size={13} />
+                  Light
+                </button>
+              </div>
+            </div>
+          </section>
+
           {/* Claude Authentication */}
           <section>
             <div className="mb-4 flex items-center gap-2">

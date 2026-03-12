@@ -4,6 +4,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { ipc } from '../../lib/ipc-client';
 import { useTerminal } from '../../hooks/useTerminal';
+import { useUIStore } from '../../stores/ui.store';
 import 'xterm/css/xterm.css';
 
 const MAX_SESSION_BUFFER_CHARS = 500_000;
@@ -24,6 +25,7 @@ function appendSessionBuffer(
 
 export function TerminalPanel() {
   const { sessions, activeId, create, close, setActiveId } = useTerminal();
+  const theme = useUIStore((s) => s.theme);
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -72,10 +74,10 @@ export function TerminalPanel() {
 
     const term = new Terminal({
       theme: {
-        background: '#09090b',
-        foreground: '#e4e4e7',
-        cursor: '#60a5fa',
-        selectionBackground: '#3f3f46',
+        background: theme === 'light' ? '#ffffff' : '#1e1e1e',
+        foreground: theme === 'light' ? '#1f1f1f' : '#d4d4d4',
+        cursor: theme === 'light' ? '#1f1f1f' : '#aeafad',
+        selectionBackground: theme === 'light' ? '#add6ff' : '#3a3d41',
       },
       fontFamily: 'SF Mono, Menlo, Monaco, monospace',
       fontSize: 13,
@@ -117,14 +119,14 @@ export function TerminalPanel() {
       term.dispose();
       xtermRef.current = null;
     };
-  }, [activeId]);
+  }, [activeId, theme]);
 
   const handleNewTab = useCallback(() => {
     create();
   }, [create]);
 
   return (
-    <div className="flex h-full flex-col bg-surface-0">
+    <div className="flex h-full min-h-0 flex-col bg-surface-0">
       {/* Tab bar */}
       <div className="flex items-center border-b border-border-subtle px-1 py-1">
         {sessions.map((s) => (
@@ -158,7 +160,7 @@ export function TerminalPanel() {
         </button>
       </div>
       {/* Terminal content */}
-      <div ref={termRef} className="flex-1" />
+      <div ref={termRef} className="min-h-0 flex-1" />
     </div>
   );
 }

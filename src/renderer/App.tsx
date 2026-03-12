@@ -6,9 +6,15 @@ import { useProjectStore } from './stores/project.store';
 import { ipc } from './lib/ipc-client';
 
 export function App() {
-  const { setActiveView, toggleTerminal } = useUIStore();
+  const setActiveView = useUIStore((s) => s.setActiveView);
+  const toggleTerminal = useUIStore((s) => s.toggleTerminal);
+  const theme = useUIStore((s) => s.theme);
   const setAuthStatus = useAuthStore((s) => s.setAuthStatus);
   const currentProject = useProjectStore((s) => s.currentProject);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   // Check auth on mount
   useEffect(() => {

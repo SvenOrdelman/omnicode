@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DiffEditor as MonacoDiffEditor } from '@monaco-editor/react';
+import { DiffEditor as MonacoDiffEditor, useMonaco } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { FileCode2, History, Loader2, MessageSquarePlus, RefreshCw, Save } from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
@@ -55,6 +55,7 @@ interface GitCommitFileView {
 
 type GitAction = 'commit' | 'push' | 'fetch';
 type RightPaneTab = 'changes' | 'history';
+type UITheme = 'dark' | 'light';
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   ts: 'typescript',
@@ -94,6 +95,139 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   xml: 'xml',
   vue: 'xml',
 };
+
+// Use built-in theme ids as custom theme ids so Monaco always has a valid fallback.
+const OMNICODE_MONACO_THEMES: Record<UITheme, 'vs-dark' | 'vs'> = {
+  dark: 'vs-dark',
+  light: 'vs',
+};
+
+function defineOmniMonacoThemes(monaco: typeof import('monaco-editor')): void {
+  monaco.editor.defineTheme(OMNICODE_MONACO_THEMES.dark, {
+    base: 'vs-dark',
+    inherit: true,
+    semanticHighlighting: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '569CD6' },
+      { token: 'predefined', foreground: '4EC9B0' },
+      { token: 'type', foreground: '4EC9B0' },
+      { token: 'identifier', foreground: 'D4D4D4' },
+      { token: 'constructor.identifier', foreground: 'DCDCAA' },
+      { token: 'namespace.instance.identifier', foreground: '9CDCFE' },
+      { token: 'namespace.class.identifier', foreground: '9CDCFE' },
+      { token: 'global.constant', foreground: '9CDCFE' },
+      { token: 'string', foreground: 'CE9178' },
+      { token: 'string.s', foreground: 'D7BA7D' },
+      { token: 'string.heredoc', foreground: 'CE9178' },
+      { token: 'string.heredoc.delimiter', foreground: 'DCDCAA' },
+      { token: 'string.escape', foreground: '9CDCFE' },
+      { token: 'string.escape.curly', foreground: 'C586C0' },
+      { token: 'regexp', foreground: 'D16969' },
+      { token: 'regexp.escape', foreground: 'D7BA7D' },
+      { token: 'regexp.escape.control', foreground: 'D7BA7D' },
+      { token: 'number', foreground: 'B5CEA8' },
+      { token: 'number.hex', foreground: 'B5CEA8' },
+      { token: 'number.octal', foreground: 'B5CEA8' },
+      { token: 'number.binary', foreground: 'B5CEA8' },
+      { token: 'number.float', foreground: 'B5CEA8' },
+      { token: 'operator', foreground: 'D4D4D4' },
+      { token: 'delimiter', foreground: 'D4D4D4' },
+      { token: 'delimiter.parenthesis', foreground: 'D4D4D4' },
+      { token: 'delimiter.curly', foreground: 'D4D4D4' },
+      { token: 'delimiter.square', foreground: 'D4D4D4' },
+      { token: 'variable', foreground: '9CDCFE' },
+      { token: 'variable.parameter', foreground: '9CDCFE' },
+      { token: 'constant', foreground: '9CDCFE' },
+      { token: 'function', foreground: 'DCDCAA' },
+      { token: 'invalid', foreground: 'EF4444' },
+    ],
+    colors: {
+      'editor.background': '#1E1E1E',
+      'editor.foreground': '#D4D4D4',
+      'editorLineNumber.foreground': '#858585',
+      'editorLineNumber.activeForeground': '#C6C6C6',
+      'editorCursor.foreground': '#AEAFAD',
+      'editor.selectionBackground': '#264F78',
+      'editor.inactiveSelectionBackground': '#3A3D41',
+      'editorLineHighlightBackground': '#2A2D2E',
+      'editorLineHighlightBorder': '#00000000',
+      'editorGutter.background': '#1E1E1E',
+      'editorIndentGuide.background1': '#404040',
+      'editorIndentGuide.activeBackground1': '#707070',
+      'editorWhitespace.foreground': '#3B3B3B',
+      'diffEditor.insertedTextBackground': '#587C0C55',
+      'diffEditor.removedTextBackground': '#94151B55',
+      'diffEditor.insertedLineBackground': '#3C5D1C30',
+      'diffEditor.removedLineBackground': '#5A1D1D30',
+    },
+  });
+
+  monaco.editor.defineTheme(OMNICODE_MONACO_THEMES.light, {
+    base: 'vs',
+    inherit: true,
+    semanticHighlighting: true,
+    rules: [
+      { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '0000FF' },
+      { token: 'predefined', foreground: '267F99' },
+      { token: 'type', foreground: '267F99' },
+      { token: 'identifier', foreground: '1F1F1F' },
+      { token: 'constructor.identifier', foreground: '795E26' },
+      { token: 'namespace.instance.identifier', foreground: '001080' },
+      { token: 'namespace.class.identifier', foreground: '001080' },
+      { token: 'global.constant', foreground: '001080' },
+      { token: 'string', foreground: 'A31515' },
+      { token: 'string.s', foreground: 'AF00DB' },
+      { token: 'string.heredoc', foreground: 'A31515' },
+      { token: 'string.heredoc.delimiter', foreground: '795E26' },
+      { token: 'string.escape', foreground: '0451A5' },
+      { token: 'string.escape.curly', foreground: 'AF00DB' },
+      { token: 'regexp', foreground: '811F3F' },
+      { token: 'regexp.escape', foreground: 'AF00DB' },
+      { token: 'regexp.escape.control', foreground: 'AF00DB' },
+      { token: 'number', foreground: '098658' },
+      { token: 'number.hex', foreground: '098658' },
+      { token: 'number.octal', foreground: '098658' },
+      { token: 'number.binary', foreground: '098658' },
+      { token: 'number.float', foreground: '098658' },
+      { token: 'operator', foreground: '1F1F1F' },
+      { token: 'delimiter', foreground: '1F1F1F' },
+      { token: 'delimiter.parenthesis', foreground: '1F1F1F' },
+      { token: 'delimiter.curly', foreground: '1F1F1F' },
+      { token: 'delimiter.square', foreground: '1F1F1F' },
+      { token: 'variable', foreground: '001080' },
+      { token: 'variable.parameter', foreground: '001080' },
+      { token: 'constant', foreground: '001080' },
+      { token: 'function', foreground: '795E26' },
+      { token: 'invalid', foreground: 'B71C1C' },
+    ],
+    colors: {
+      'editor.background': '#FFFFFF',
+      'editor.foreground': '#1F1F1F',
+      'editorLineNumber.foreground': '#A0A0A0',
+      'editorLineNumber.activeForeground': '#4D4D4D',
+      'editorCursor.foreground': '#1F1F1F',
+      'editor.selectionBackground': '#ADD6FF',
+      'editor.inactiveSelectionBackground': '#E5EBF1',
+      'editorLineHighlightBackground': '#F2F2F2',
+      'editorLineHighlightBorder': '#00000000',
+      'editorGutter.background': '#FFFFFF',
+      'editorIndentGuide.background1': '#DADADA',
+      'editorIndentGuide.activeBackground1': '#AFAFAF',
+      'editorWhitespace.foreground': '#D0D0D0',
+      'diffEditor.insertedTextBackground': '#9CCC2C40',
+      'diffEditor.removedTextBackground': '#F14C4C40',
+      'diffEditor.insertedLineBackground': '#EAF5D630',
+      'diffEditor.removedLineBackground': '#FDE9E930',
+    },
+  });
+}
+
+function applyOmniMonacoTheme(monaco: typeof import('monaco-editor'), theme: UITheme): void {
+  defineOmniMonacoThemes(monaco);
+  monaco.editor.setTheme(OMNICODE_MONACO_THEMES[theme]);
+}
 
 function languageFromFilePath(filePath: string | null): string | undefined {
   if (!filePath) return undefined;
@@ -182,12 +316,14 @@ function formatHistoryTimestamp(rawTimestamp: string): string {
 export function RightPane() {
   const DEFAULT_VISIBLE_FILE_ROWS = 5;
   const FILE_ROW_HEIGHT = 36;
-  const FILE_LIST_MIN_HEIGHT = 110;
-  const FILE_VIEW_MIN_HEIGHT = 180;
+  const FILE_LIST_MIN_HEIGHT = 0;
+  const FILE_VIEW_MIN_HEIGHT = 0;
   const SPLIT_HANDLE_HEIGHT = 10;
   const DEFAULT_FILE_LIST_HEIGHT = DEFAULT_VISIBLE_FILE_ROWS * FILE_ROW_HEIGHT;
 
   const currentProject = useProjectStore((s) => s.currentProject);
+  const monacoInstance = useMonaco();
+  const uiTheme = useUIStore((s) => s.theme);
   const { sendPrompt } = useChat();
   const setActiveView = useUIStore((s) => s.setActiveView);
 
@@ -250,6 +386,7 @@ export function RightPane() {
     [historyFiles, selectedHistoryFilePath]
   );
   const selectedHistoryLanguage = languageFromFilePath(selectedHistoryFilePath);
+  const monacoThemeName = OMNICODE_MONACO_THEMES[uiTheme];
   const maxChangesListHeight = useMemo(() => {
     if (splitContainerHeight <= 0) {
       return DEFAULT_FILE_LIST_HEIGHT;
@@ -330,6 +467,11 @@ export function RightPane() {
       };
     }
   }, []);
+
+  useEffect(() => {
+    if (!monacoInstance) return;
+    applyOmniMonacoTheme(monacoInstance, uiTheme);
+  }, [monacoInstance, uiTheme]);
 
   useEffect(() => {
     if (!currentProject) {
@@ -724,6 +866,7 @@ export function RightPane() {
 
   const handleDiffEditorMount = useCallback(
     (editor: MonacoEditor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor')) => {
+      applyOmniMonacoTheme(monaco, uiTheme);
       diffEditorRef.current = editor;
       const modifiedEditor = editor.getModifiedEditor();
       modifiedEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -734,7 +877,7 @@ export function RightPane() {
         setEditorDraft(modifiedEditor.getValue());
       });
     },
-    []
+    [uiTheme]
   );
 
   useEffect(
@@ -819,6 +962,10 @@ export function RightPane() {
     }),
     []
   );
+
+  const handleMonacoBeforeMount = useCallback((monaco: typeof import('monaco-editor')) => {
+    applyOmniMonacoTheme(monaco, uiTheme);
+  }, [uiTheme]);
 
   return (
     <div className="flex h-full flex-col bg-surface-1/90">
@@ -1026,7 +1173,8 @@ export function RightPane() {
                       original={fileView.baseContent}
                       modified={editorDraft}
                       language={selectedLanguage}
-                      theme="vs-dark"
+                      theme={monacoThemeName}
+                      beforeMount={handleMonacoBeforeMount}
                       options={diffEditorOptions}
                       onMount={handleDiffEditorMount}
                       loading={
@@ -1160,7 +1308,8 @@ export function RightPane() {
                         original={historyFileView.baseContent}
                         modified={historyFileView.content}
                         language={selectedHistoryLanguage}
-                        theme="vs-dark"
+                        theme={monacoThemeName}
+                        beforeMount={handleMonacoBeforeMount}
                         options={historyDiffEditorOptions}
                         loading={
                           <div className="flex h-full items-center justify-center text-sm text-text-muted">

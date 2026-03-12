@@ -36,7 +36,7 @@ function extractUserCancelledEventText(message: ProviderMessage): string | null 
 }
 
 export function MessageList({ messages, isStreaming, activityLines, repoName, onRunCommand }: MessageListProps) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const timelineItems = messages.reduce<TimelineItem[]>((items, message) => {
     const cancelledText = extractUserCancelledEventText(message);
     if (cancelledText) {
@@ -53,12 +53,14 @@ export function MessageList({ messages, isStreaming, activityLines, repoName, on
   }, []);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const listEl = listRef.current;
+    if (!listEl) return;
+    listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' });
   }, [timelineItems.length, isStreaming]);
 
   if (timelineItems.length === 0 && !isStreaming) {
     return (
-      <div className="flex h-full items-center justify-center px-6 text-text-muted">
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-text-muted">
         <div className="text-center">
           <MessageSquare size={30} className="mx-auto mb-3 opacity-35" />
           <p className="text-[30px] font-semibold leading-none text-text-primary">Let&apos;s build</p>
@@ -69,7 +71,7 @@ export function MessageList({ messages, isStreaming, activityLines, repoName, on
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 pb-7 pt-6 sm:px-7">
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-5 pb-7 pt-6 sm:px-7">
       <div className="mx-auto max-w-5xl space-y-4">
         {timelineItems.map((item) => {
           if (item.kind === 'event') {
@@ -87,7 +89,6 @@ export function MessageList({ messages, isStreaming, activityLines, repoName, on
           return <MessageBubble key={item.id} message={item.message} onRunCommand={onRunCommand} />;
         })}
         {isStreaming && <StreamingIndicator activityLines={activityLines} />}
-        <div ref={endRef} />
       </div>
     </div>
   );

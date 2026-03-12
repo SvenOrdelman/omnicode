@@ -2,32 +2,58 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface-0: #0a0d12;
-  --color-surface-1: #101722;
-  --color-surface-2: #151f2d;
-  --color-surface-3: #1b2a3d;
+  --color-surface-0: #181818;
+  --color-surface-1: #1f1f1f;
+  --color-surface-2: #252526;
+  --color-surface-3: #2d2d2d;
 
-  --color-border-subtle: #1e1e22;
-  --color-border-default: #293244;
-  --color-border-strong: #3f536f;
+  --color-border-subtle: #2a2a2a;
+  --color-border-default: #333333;
+  --color-border-strong: #444444;
 
-  --color-accent: #3b82f6;
-  --color-accent-hover: #60a5fa;
-  --color-accent-muted: #3b82f622;
-  --color-accent-warm: #f59e0b;
-  --color-accent-cool: #14b8a6;
+  --color-accent: #4f8cc9;
+  --color-accent-hover: #67a3de;
+  --color-accent-muted: #4f8cc922;
+  --color-accent-warm: #a78659;
+  --color-accent-cool: #5f7f9a;
 
-  --color-text-primary: #e4e4e7;
-  --color-text-secondary: #b0b7c5;
-  --color-text-muted: #647089;
+  --color-text-primary: #d4d4d4;
+  --color-text-secondary: #b8b8b8;
+  --color-text-muted: #8a8a8a;
 
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-success: #73c991;
+  --color-warning: #cca700;
+  --color-danger: #f14c4c;
 }
 
 :root {
   color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-surface-0: #f5f5f5;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f3f3f3;
+  --color-surface-3: #ebebeb;
+
+  --color-border-subtle: #dfdfdf;
+  --color-border-default: #d0d0d0;
+  --color-border-strong: #bdbdbd;
+
+  --color-accent: #0b62d6;
+  --color-accent-hover: #005fb8;
+  --color-accent-muted: #0b62d61a;
+  --color-accent-warm: #9e8459;
+  --color-accent-cool: #52718a;
+
+  --color-text-primary: #1f1f1f;
+  --color-text-secondary: #3f3f3f;
+  --color-text-muted: #666666;
+
+  --color-success: #2e7d32;
+  --color-warning: #8a6d1a;
+  --color-danger: #b71c1c;
 }
 
 *,
@@ -42,12 +68,21 @@ html, body, #root {
   overflow: hidden;
   background-color: var(--color-surface-0);
   background-image:
-    radial-gradient(900px 560px at 4% -16%, rgba(59, 130, 246, 0.14), transparent 64%),
-    radial-gradient(760px 420px at 102% 124%, rgba(245, 158, 11, 0.11), transparent 72%),
-    radial-gradient(460px 360px at 92% 10%, rgba(20, 184, 166, 0.08), transparent 74%);
+    radial-gradient(920px 560px at 4% -16%, rgba(255, 255, 255, 0.05), transparent 66%),
+    radial-gradient(780px 440px at 102% 124%, rgba(255, 255, 255, 0.03), transparent 72%),
+    radial-gradient(500px 360px at 88% 10%, rgba(0, 0, 0, 0.16), transparent 74%);
   color: var(--color-text-primary);
   font-family: 'Manrope', 'Avenir Next', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme='light'],
+html[data-theme='light'] body,
+html[data-theme='light'] #root {
+  background-image:
+    radial-gradient(900px 540px at 4% -16%, rgba(0, 0, 0, 0.035), transparent 66%),
+    radial-gradient(760px 420px at 102% 124%, rgba(0, 0, 0, 0.025), transparent 72%),
+    radial-gradient(460px 320px at 92% 10%, rgba(255, 255, 255, 0.35), transparent 74%);
 }
 
 /* Scrollbar styling */
@@ -67,6 +102,14 @@ html, body, #root {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: #c4c4c4;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: #adadad;
 }
 
 /* Glass utility */
@@ -117,7 +160,7 @@ html, body, #root {
 .markdown-body h3,
 .markdown-body h4 {
   margin: 0.9rem 0 0.4rem;
-  color: #f4f7ff;
+  color: #e7e7e7;
   font-weight: 650;
   letter-spacing: 0.01em;
 }
@@ -146,7 +189,7 @@ html, body, #root {
 }
 
 .markdown-body li::marker {
-  color: #60a5fa;
+  color: var(--color-accent-hover);
 }
 
 .markdown-body li > p {
@@ -155,22 +198,22 @@ html, body, #root {
 
 .markdown-body blockquote {
   margin: 0.7rem 0;
-  border-left: 2px solid rgba(96, 165, 250, 0.45);
-  background: rgba(59, 130, 246, 0.08);
+  border-left: 2px solid rgba(143, 143, 143, 0.45);
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 0.25rem;
   padding: 0.4rem 0.75rem;
-  color: #c7d2fe;
+  color: #c9c9c9;
 }
 
 .markdown-body a {
-  color: #7dd3fc;
+  color: #8fbce6;
   text-decoration: underline;
-  text-decoration-color: rgba(125, 211, 252, 0.45);
+  text-decoration-color: rgba(143, 188, 230, 0.5);
   text-underline-offset: 2px;
 }
 
 .markdown-body a:hover {
-  color: #bae6fd;
+  color: #b2d3f0;
 }
 
 .markdown-body hr {
@@ -195,23 +238,33 @@ html, body, #root {
 }
 
 .markdown-body th {
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(255, 255, 255, 0.06);
   font-weight: 600;
-  color: #dbeafe;
+  color: #e1e1e1;
 }
 
 .markdown-body tr:nth-child(even) td {
-  background: rgba(21, 31, 45, 0.7);
+  background: rgba(255, 255, 255, 0.02);
 }
 
-.markdown-body code {
-  color: #bfdbfe;
-  background: rgba(37, 99, 235, 0.18);
-  border: 1px solid rgba(96, 165, 250, 0.34);
+.markdown-body :not(pre) > code {
+  color: #d7d7d7;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 0.35rem;
   padding: 0.08rem 0.32rem;
   font-size: 0.8em;
   word-break: break-word;
+}
+
+.markdown-body pre > code {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  font-size: inherit;
+  word-break: normal;
 }
 
 .markdown-body pre {
@@ -236,52 +289,179 @@ html, body, #root {
   list-style: none;
 }
 
-/* Code panel syntax highlighting (VS Code-like dark token colors) */
-.code-panel-code .hljs-comment,
-.code-panel-code .hljs-quote {
+/* Shared syntax highlighting colors (Code panel + chat blocks) */
+.code-block-code {
+  display: block;
+  white-space: pre;
+  color: #d4d4d4;
+}
+
+:is(.code-panel-code, .code-block-code) .hljs-comment,
+:is(.code-panel-code, .code-block-code) .hljs-quote {
   color: #6a9955;
   font-style: italic;
 }
 
-.code-panel-code .hljs-keyword,
-.code-panel-code .hljs-selector-tag,
-.code-panel-code .hljs-literal {
-  color: #c586c0;
+:is(.code-panel-code, .code-block-code) .hljs-keyword,
+:is(.code-panel-code, .code-block-code) .hljs-selector-tag,
+:is(.code-panel-code, .code-block-code) .hljs-literal {
+  color: #569cd6;
 }
 
-.code-panel-code .hljs-string,
-.code-panel-code .hljs-regexp,
-.code-panel-code .hljs-symbol {
+:is(.code-panel-code, .code-block-code) .hljs-string,
+:is(.code-panel-code, .code-block-code) .hljs-regexp {
   color: #ce9178;
 }
 
-.code-panel-code .hljs-number,
-.code-panel-code .hljs-attr,
-.code-panel-code .hljs-attribute {
+:is(.code-panel-code, .code-block-code) .hljs-number,
+:is(.code-panel-code, .code-block-code) .hljs-attr,
+:is(.code-panel-code, .code-block-code) .hljs-attribute {
   color: #b5cea8;
 }
 
-.code-panel-code .hljs-title,
-.code-panel-code .hljs-title.function_,
-.code-panel-code .hljs-function .hljs-title {
+:is(.code-panel-code, .code-block-code) .hljs-title,
+:is(.code-panel-code, .code-block-code) .hljs-title.function_,
+:is(.code-panel-code, .code-block-code) .hljs-function .hljs-title,
+:is(.code-panel-code, .code-block-code) .hljs-title.class_,
+:is(.code-panel-code, .code-block-code) .hljs-title.class_.inherited__ {
   color: #dcdcaa;
 }
 
-.code-panel-code .hljs-type,
-.code-panel-code .hljs-built_in,
-.code-panel-code .hljs-class .hljs-title {
+:is(.code-panel-code, .code-block-code) .hljs-type,
+:is(.code-panel-code, .code-block-code) .hljs-built_in,
+:is(.code-panel-code, .code-block-code) .hljs-class .hljs-title,
+:is(.code-panel-code, .code-block-code) .hljs-built_in-name {
   color: #4ec9b0;
 }
 
-.code-panel-code .hljs-variable,
-.code-panel-code .hljs-params,
-.code-panel-code .hljs-property {
+:is(.code-panel-code, .code-block-code) .hljs-variable,
+:is(.code-panel-code, .code-block-code) .hljs-variable.constant_,
+:is(.code-panel-code, .code-block-code) .hljs-params,
+:is(.code-panel-code, .code-block-code) .hljs-property,
+:is(.code-panel-code, .code-block-code) .hljs-template-variable {
   color: #9cdcfe;
 }
 
-.code-panel-code .hljs-meta,
-.code-panel-code .hljs-link {
-  color: #569cd6;
+:is(.code-panel-code, .code-block-code) .hljs-symbol {
+  color: #d7ba7d;
+}
+
+:is(.code-panel-code, .code-block-code) .hljs-subst {
+  color: #d4d4d4;
+}
+
+:is(.code-panel-code, .code-block-code) .hljs-meta,
+:is(.code-panel-code, .code-block-code) .hljs-link,
+:is(.code-panel-code, .code-block-code) .hljs-punctuation {
+  color: #808080;
+}
+
+:is(.code-panel-code, .code-block-code) .hljs-emphasis {
+  font-style: italic;
+}
+
+:is(.code-panel-code, .code-block-code) .hljs-strong {
+  font-weight: 700;
+}
+
+:root[data-theme='light'] .markdown-body h1,
+:root[data-theme='light'] .markdown-body h2,
+:root[data-theme='light'] .markdown-body h3,
+:root[data-theme='light'] .markdown-body h4 {
+  color: #1f1f1f;
+}
+
+:root[data-theme='light'] .markdown-body blockquote {
+  border-left-color: rgba(122, 122, 122, 0.45);
+  background: rgba(0, 0, 0, 0.03);
+  color: #3a3a3a;
+}
+
+:root[data-theme='light'] .markdown-body a {
+  color: #0b62d6;
+  text-decoration-color: rgba(11, 98, 214, 0.45);
+}
+
+:root[data-theme='light'] .markdown-body a:hover {
+  color: #084b9f;
+}
+
+:root[data-theme='light'] .markdown-body th {
+  background: rgba(0, 0, 0, 0.05);
+  color: #232323;
+}
+
+:root[data-theme='light'] .markdown-body tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+:root[data-theme='light'] .markdown-body :not(pre) > code {
+  color: #6b2445;
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+:root[data-theme='light'] .code-block-code {
+  color: #1f1f1f;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-comment,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-quote {
+  color: #008000;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-keyword,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-selector-tag,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-literal {
+  color: #0000ff;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-string,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-regexp {
+  color: #a31515;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-number,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-attr,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-attribute {
+  color: #098658;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-title,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-title.function_,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-function .hljs-title,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-title.class_,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-title.class_.inherited__ {
+  color: #795e26;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-type,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-built_in,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-class .hljs-title,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-built_in-name {
+  color: #267f99;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-variable,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-variable.constant_,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-params,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-property,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-template-variable {
+  color: #001080;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-symbol {
+  color: #af00db;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-subst {
+  color: #1f1f1f;
+}
+
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-meta,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-link,
+:root[data-theme='light'] :is(.code-panel-code, .code-block-code) .hljs-punctuation {
+  color: #6b6b6b;
 }
 
 /* Monaco line highlights for git-style changes in edit mode */

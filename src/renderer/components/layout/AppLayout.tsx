@@ -17,8 +17,7 @@ const COLLAPSED_SIDEBAR_WIDTH = 72;
 const SIDEBAR_MIN = 220;
 const SIDEBAR_MAX = 620;
 const RIGHT_PANE_MIN = 320;
-const RIGHT_PANE_MAX = 980;
-const CENTER_MIN = 440;
+const CENTER_MIN = 0;
 const TERMINAL_MIN = 120;
 const TERMINAL_MAX = 700;
 const TERMINAL_RESERVED = 170;
@@ -69,8 +68,9 @@ export function AppLayout() {
         sidebarDisplayWidth: sidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : sidebarWidth,
         rightPaneDisplayWidth: rightPaneWidth,
         terminalDisplayHeight: terminalHeight,
+        minTerminal: TERMINAL_MIN,
         maxSidebar: SIDEBAR_MAX,
-        maxRight: RIGHT_PANE_MAX,
+        maxRight: Number.POSITIVE_INFINITY,
         maxTerminal: TERMINAL_MAX,
       };
     }
@@ -93,7 +93,7 @@ export function AppLayout() {
       minRight,
       innerWidth - computedSidebar - rightHandleWidth - OUTER_GAP - sidebarHandleWidth - CENTER_MIN
     );
-    const computedRight = clamp(rightPaneWidth, minRight, Math.min(RIGHT_PANE_MAX, rightMax));
+    const computedRight = clamp(rightPaneWidth, minRight, rightMax);
 
     if (!sidebarCollapsed) {
       sidebarMax = Math.max(
@@ -103,15 +103,17 @@ export function AppLayout() {
       computedSidebar = clamp(computedSidebar, minSidebar, Math.min(SIDEBAR_MAX, sidebarMax));
     }
 
-    const maxTerminal = Math.max(TERMINAL_MIN, Math.min(TERMINAL_MAX, innerHeight - TERMINAL_RESERVED));
-    const computedTerminal = clamp(terminalHeight, TERMINAL_MIN, maxTerminal);
+    const maxTerminal = Math.max(0, Math.min(TERMINAL_MAX, innerHeight - TERMINAL_RESERVED));
+    const minTerminal = Math.min(TERMINAL_MIN, maxTerminal);
+    const computedTerminal = clamp(terminalHeight, minTerminal, maxTerminal);
 
     return {
       sidebarDisplayWidth: computedSidebar,
       rightPaneDisplayWidth: computedRight,
       terminalDisplayHeight: computedTerminal,
+      minTerminal,
       maxSidebar: Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, sidebarMax || SIDEBAR_MAX)),
-      maxRight: Math.min(RIGHT_PANE_MAX, Math.max(RIGHT_PANE_MIN, rightMax)),
+      maxRight: Math.max(RIGHT_PANE_MIN, rightMax),
       maxTerminal,
     };
   }, [
@@ -157,9 +159,11 @@ export function AppLayout() {
 
   const handleTerminalResize = useCallback(
     (delta: number) => {
-      setTerminalHeight(Math.round(clamp(paneMetrics.terminalDisplayHeight - delta, TERMINAL_MIN, paneMetrics.maxTerminal)));
+      setTerminalHeight(
+        Math.round(clamp(paneMetrics.terminalDisplayHeight - delta, paneMetrics.minTerminal, paneMetrics.maxTerminal))
+      );
     },
-    [paneMetrics.maxTerminal, paneMetrics.terminalDisplayHeight, setTerminalHeight]
+    [paneMetrics.maxTerminal, paneMetrics.minTerminal, paneMetrics.terminalDisplayHeight, setTerminalHeight]
   );
 
   const handleRightPaneResize = useCallback(
@@ -186,6 +190,8 @@ export function AppLayout() {
     }
   };
 
+  const shouldRenderTerminal = terminalOpen && paneMetrics.terminalDisplayHeight > 0;
+
   return (
     <div
       ref={layoutRef}
@@ -203,14 +209,14 @@ export function AppLayout() {
       </div>
       {!sidebarCollapsed && <ResizeHandle direction="horizontal" onResize={handleSidebarResize} />}
 
-      <div className="flex min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">
         {/* Main content area */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle/75 bg-surface-1/40">
           {/* Center pane */}
-          <div className="flex-1 overflow-hidden">{renderCenter()}</div>
+          <div className="min-h-0 flex-1 overflow-hidden">{renderCenter()}</div>
 
           {/* Terminal */}
-          {terminalOpen && (
+          {shouldRenderTerminal && (
             <>
               <ResizeHandle direction="vertical" onResize={handleTerminalResize} />
               <div style={{ height: paneMetrics.terminalDisplayHeight }} className="flex-shrink-0">

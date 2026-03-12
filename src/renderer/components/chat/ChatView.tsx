@@ -12,10 +12,10 @@ export function ChatView() {
   const isStreaming = status === 'streaming';
 
   return (
-    <div className="relative flex h-full flex-col bg-surface-0">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface-0">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-accent/10 via-accent-cool/6 to-transparent" />
       {/* Header */}
-      <div className="relative z-10 flex items-center justify-between border-b border-border-subtle/80 bg-surface-0/70 px-6 py-2.5 backdrop-blur-md [-webkit-app-region:drag]">
+      <div className="relative z-10 flex flex-shrink-0 items-center justify-between border-b border-border-subtle/80 bg-surface-0/70 px-6 py-2.5 backdrop-blur-md [-webkit-app-region:drag]">
         <h2 className="max-w-[55%] truncate text-xs font-medium text-text-secondary [-webkit-app-region:no-drag]">
           {activeSession?.title || 'New thread'}
         </h2>
