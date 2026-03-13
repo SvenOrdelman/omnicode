@@ -7,7 +7,17 @@ import { Archive } from 'lucide-react';
 import { useProjectStore } from '../../stores/project.store';
 
 export function ChatView() {
-  const { messages, status, error, activityLines, sendPrompt, interrupt, activeSession, archiveSession } = useChat();
+  const {
+    messages,
+    status,
+    error,
+    activityLines,
+    sendPrompt,
+    interrupt,
+    activeSession,
+    archiveSession,
+    updateSessionPreferences,
+  } = useChat();
   const currentProject = useProjectStore((s) => s.currentProject);
   const isStreaming = status === 'streaming';
 
@@ -59,6 +69,7 @@ export function ChatView() {
       {/* Input */}
       <ChatInput
         onSend={sendPrompt}
+        onPreferencesChange={updateSessionPreferences}
         onInterrupt={interrupt}
         isStreaming={isStreaming}
         disabled={!currentProject}

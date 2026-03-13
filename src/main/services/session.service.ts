@@ -1,10 +1,33 @@
 import { v4 as uuid } from 'uuid';
 import { getDatabase } from './database.service';
 import type { Session, SessionMessage } from '../../shared/session-types';
+import type { ChatRequestOptions } from '../../shared/chat-types';
 import type { ProviderContent } from '../../shared/provider-types';
+import {
+  normalizeAgentMode,
+  normalizeChatExecutionMode,
+  normalizeChatModelId,
+} from '../../shared/chat-types';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const MAX_TITLE_LENGTH = 72;
+
+function mapRowToSession(row: any): Session {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    provider: row.provider,
+    sdkSessionId: row.sdk_session_id,
+    model: normalizeChatModelId(row.model),
+    agentMode: normalizeAgentMode(row.agent_mode),
+    executionMode: normalizeChatExecutionMode(row.execution_mode),
+    archived: Boolean(row.archived),
+    archivedAt: row.archived_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 function deriveTitleFromContent(content: ProviderContent[]): string {
   const text = content
@@ -28,20 +51,26 @@ function deriveTitleFromContent(content: ProviderContent[]): string {
   return `${text.slice(0, MAX_TITLE_LENGTH).trimEnd()}...`;
 }
 
-export function createSession(projectId: string, provider = 'claude'): Session {
+export function createSession(projectId: string, provider = 'claude', chatOptions?: ChatRequestOptions): Session {
   const db = getDatabase();
   const id = uuid();
   const now = Date.now();
+  const model = normalizeChatModelId(chatOptions?.model);
+  const agentMode = normalizeAgentMode(chatOptions?.mode);
+  const executionMode = normalizeChatExecutionMode(chatOptions?.executionMode);
 
   db.prepare(
-    'INSERT INTO sessions (id, project_id, title, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(id, projectId, DEFAULT_SESSION_TITLE, provider, now, now);
+    'INSERT INTO sessions (id, project_id, title, provider, model, agent_mode, execution_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, projectId, DEFAULT_SESSION_TITLE, provider, model, agentMode, executionMode, now, now);
 
   return {
     id,
     projectId,
     title: DEFAULT_SESSION_TITLE,
     provider,
+    model,
+    agentMode,
+    executionMode,
     archived: false,
     archivedAt: null,
     createdAt: now,
@@ -60,38 +89,20 @@ export function listSessions(projectId: string, includeArchived = false): Sessio
     )
     .all(projectId) as any[];
 
-  return rows.map((r) => ({
-    id: r.id,
-    projectId: r.project_id,
-    title: r.title,
-    provider: r.provider,
-    sdkSessionId: r.sdk_session_id,
-    archived: Boolean(r.archived),
-    archivedAt: r.archived_at ?? null,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  }));
+  return rows.map((row) => mapRowToSession(row));
 }
 
 export function getSession(id: string): Session | null {
   const db = getDatabase();
-  const r = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as any;
-  if (!r) return null;
-
-  return {
-    id: r.id,
-    projectId: r.project_id,
-    title: r.title,
-    provider: r.provider,
-    sdkSessionId: r.sdk_session_id,
-    archived: Boolean(r.archived),
-    archivedAt: r.archived_at ?? null,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
+  const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as any;
+  if (!row) return null;
+  return mapRowToSession(row);
 }
 
-export function updateSession(id: string, updates: Partial<Pick<Session, 'title' | 'sdkSessionId'>>): void {
+export function updateSession(
+  id: string,
+  updates: Partial<Pick<Session, 'title' | 'sdkSessionId' | 'model' | 'agentMode' | 'executionMode'>>
+): void {
   const db = getDatabase();
   const now = Date.now();
   if (updates.title !== undefined) {
@@ -99,6 +110,27 @@ export function updateSession(id: string, updates: Partial<Pick<Session, 'title'
   }
   if (updates.sdkSessionId !== undefined) {
     db.prepare('UPDATE sessions SET sdk_session_id = ?, updated_at = ? WHERE id = ?').run(updates.sdkSessionId, now, id);
+  }
+  if (updates.model !== undefined) {
+    db.prepare('UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?').run(
+      normalizeChatModelId(updates.model),
+      now,
+      id
+    );
+  }
+  if (updates.agentMode !== undefined) {
+    db.prepare('UPDATE sessions SET agent_mode = ?, updated_at = ? WHERE id = ?').run(
+      normalizeAgentMode(updates.agentMode),
+      now,
+      id
+    );
+  }
+  if (updates.executionMode !== undefined) {
+    db.prepare('UPDATE sessions SET execution_mode = ?, updated_at = ? WHERE id = ?').run(
+      normalizeChatExecutionMode(updates.executionMode),
+      now,
+      id
+    );
   }
 }
 

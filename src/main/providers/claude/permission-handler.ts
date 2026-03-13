@@ -8,9 +8,11 @@ import type { ApprovalRequest } from '../../../shared/provider-types';
 interface PendingApproval {
   resolve: (approved: boolean) => void;
   request: ApprovalRequest;
+  timeout: NodeJS.Timeout;
 }
 
 const pendingApprovals = new Map<string, PendingApproval>();
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function createApprovalRequest(
   sessionId: string,
@@ -29,7 +31,14 @@ export function createApprovalRequest(
   };
 
   const promise = new Promise<boolean>((resolve) => {
-    pendingApprovals.set(id, { resolve, request });
+    const timeout = setTimeout(() => {
+      const pending = pendingApprovals.get(id);
+      if (!pending) return;
+      pendingApprovals.delete(id);
+      pending.resolve(false);
+    }, APPROVAL_TIMEOUT_MS);
+
+    pendingApprovals.set(id, { resolve, request, timeout });
   });
 
   return { request, promise };
@@ -39,6 +48,7 @@ export function resolveApproval(id: string, approved: boolean): boolean {
   const pending = pendingApprovals.get(id);
   if (!pending) return false;
 
+  clearTimeout(pending.timeout);
   pending.resolve(approved);
   pendingApprovals.delete(id);
   return true;
@@ -47,6 +57,7 @@ export function resolveApproval(id: string, approved: boolean): boolean {
 export function cancelAllApprovals(sessionId: string): void {
   for (const [id, pending] of pendingApprovals) {
     if (pending.request.sessionId === sessionId) {
+      clearTimeout(pending.timeout);
       pending.resolve(false);
       pendingApprovals.delete(id);
     }

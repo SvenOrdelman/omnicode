@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { app } from 'electron';
+import { DEFAULT_CHAT_EXECUTION_MODE, DEFAULT_CHAT_MODEL } from '../../shared/chat-types';
 
 let db: Database.Database | null = null;
 
@@ -32,6 +33,9 @@ function initSchema(db: Database.Database): void {
       title TEXT NOT NULL DEFAULT 'New Chat',
       provider TEXT NOT NULL DEFAULT 'claude',
       sdk_session_id TEXT,
+      model TEXT NOT NULL DEFAULT '${DEFAULT_CHAT_MODEL}',
+      agent_mode TEXT NOT NULL DEFAULT 'code',
+      execution_mode TEXT NOT NULL DEFAULT '${DEFAULT_CHAT_EXECUTION_MODE}',
       archived INTEGER NOT NULL DEFAULT 0,
       archived_at INTEGER,
       created_at INTEGER NOT NULL,
@@ -57,6 +61,9 @@ function initSchema(db: Database.Database): void {
   const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
   const hasArchived = sessionColumns.some((column) => column.name === 'archived');
   const hasArchivedAt = sessionColumns.some((column) => column.name === 'archived_at');
+  const hasModel = sessionColumns.some((column) => column.name === 'model');
+  const hasAgentMode = sessionColumns.some((column) => column.name === 'agent_mode');
+  const hasExecutionMode = sessionColumns.some((column) => column.name === 'execution_mode');
 
   if (!hasArchived) {
     db.exec('ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
@@ -64,6 +71,20 @@ function initSchema(db: Database.Database): void {
 
   if (!hasArchivedAt) {
     db.exec('ALTER TABLE sessions ADD COLUMN archived_at INTEGER');
+  }
+
+  if (!hasModel) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT '${DEFAULT_CHAT_MODEL}'`);
+  }
+
+  if (!hasAgentMode) {
+    db.exec("ALTER TABLE sessions ADD COLUMN agent_mode TEXT NOT NULL DEFAULT 'code'");
+  }
+
+  if (!hasExecutionMode) {
+    db.exec(
+      `ALTER TABLE sessions ADD COLUMN execution_mode TEXT NOT NULL DEFAULT '${DEFAULT_CHAT_EXECUTION_MODE}'`
+    );
   }
 }
 

@@ -31,13 +31,31 @@ export function TerminalPanel() {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const activeIdRef = useRef<string | null>(activeId);
   const sessionBuffersRef = useRef<Map<string, string>>(new Map());
+  const initialCreateDoneRef = useRef(false);
 
-  // Create terminal on mount if none exist
+  // Create a terminal once when panel mounts (or when project becomes available) if none exist.
   useEffect(() => {
-    if (sessions.length === 0) {
-      create();
+    if (initialCreateDoneRef.current) return;
+
+    if (sessions.length > 0) {
+      initialCreateDoneRef.current = true;
+      return;
     }
-  }, [sessions.length, create]);
+
+    let alive = true;
+    create()
+      .then((id) => {
+        if (!alive) return;
+        if (id) {
+          initialCreateDoneRef.current = true;
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      alive = false;
+    };
+  }, [create, sessions.length]);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -88,6 +106,9 @@ export function TerminalPanel() {
     term.loadAddon(fitAddon);
     term.open(termRef.current);
     fitAddon.fit();
+    const focusFrame = window.requestAnimationFrame(() => {
+      term.focus();
+    });
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -115,6 +136,7 @@ export function TerminalPanel() {
     observer.observe(termRef.current);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       observer.disconnect();
       term.dispose();
       xtermRef.current = null;

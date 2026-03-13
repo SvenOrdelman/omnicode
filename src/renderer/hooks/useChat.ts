@@ -2,6 +2,9 @@ import { useCallback, useEffect } from 'react';
 import { ipc } from '../lib/ipc-client';
 import { useChatStore } from '../stores/chat.store';
 import { useProjectStore } from '../stores/project.store';
+import { useUIStore } from '../stores/ui.store';
+import type { ChatRequestOptions } from '../../shared/chat-types';
+import type { Session } from '../../shared/session-types';
 import type {
   ProviderContent,
   ProviderMessage,
@@ -130,6 +133,12 @@ export function useChat() {
     addMessage,
   } = useChatStore();
   const currentProject = useProjectStore((s) => s.currentProject);
+  const selectedModel = useUIStore((s) => s.selectedModel);
+  const setSelectedModel = useUIStore((s) => s.setSelectedModel);
+  const agentMode = useUIStore((s) => s.agentMode);
+  const setAgentMode = useUIStore((s) => s.setAgentMode);
+  const selectedExecutionMode = useUIStore((s) => s.selectedExecutionMode);
+  const setSelectedExecutionMode = useUIStore((s) => s.setSelectedExecutionMode);
   const activeSessionId = activeSession?.id;
   const status: ProviderStatus = activeSessionId ? (sessionStatusById[activeSessionId] ?? 'idle') : 'idle';
   const error = activeSessionId ? (sessionErrorById[activeSessionId] ?? null) : null;
@@ -145,16 +154,37 @@ export function useChat() {
     []
   );
 
+  const applySessionPreferences = useCallback(
+    (session: Session) => {
+      setSelectedModel(session.model);
+      setAgentMode(session.agentMode);
+      setSelectedExecutionMode(session.executionMode);
+    },
+    [setAgentMode, setSelectedExecutionMode, setSelectedModel]
+  );
+
   const ensureTargetSession = useCallback(async () => {
     if (!currentProject) return null;
     if (activeSession && activeSession.projectId === currentProject.id) return activeSession;
 
-    const session = await ipc().createSession(currentProject.id);
+    const session = await ipc().createSession(currentProject.id, undefined, {
+      model: selectedModel,
+      mode: agentMode,
+      executionMode: selectedExecutionMode,
+    });
     if (!session) return null;
     setActiveSession(session);
     clearChat();
     return session;
-  }, [activeSession, clearChat, currentProject, setActiveSession]);
+  }, [
+    activeSession,
+    agentMode,
+    clearChat,
+    currentProject,
+    selectedExecutionMode,
+    selectedModel,
+    setActiveSession,
+  ]);
 
   useEffect(() => {
     streamSubscriberCount += 1;
@@ -233,7 +263,7 @@ export function useChat() {
   }, []);
 
   const sendPrompt = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, requestOptions?: ChatRequestOptions) => {
       if (!currentProject) return;
 
       let targetSessionId: string | null = activeSession?.id ?? null;
@@ -246,12 +276,33 @@ export function useChat() {
         setSessionError(targetSession.id, null);
         setSessionCompleted(targetSession.id, false);
         clearSessionActivity(targetSession.id);
+        const resolvedModel = requestOptions?.model ?? selectedModel;
+        const resolvedMode = requestOptions?.mode ?? agentMode;
+        const resolvedExecutionMode = requestOptions?.executionMode ?? selectedExecutionMode;
+
+        const updateResult = await ipc()
+          .updateSession({
+            sessionId: targetSession.id,
+            updates: {
+              model: resolvedModel,
+              mode: resolvedMode,
+              executionMode: resolvedExecutionMode,
+            },
+          })
+          .catch(() => null);
+
+        if (updateResult?.session && targetSession.id === updateResult.session.id) {
+          setActiveSession(updateResult.session);
+        }
 
         await ipc().sendPrompt({
           sessionId: targetSession.id,
           prompt,
           cwd: currentProject.path,
           sdkSessionId: targetSession.sdkSessionId,
+          model: resolvedModel,
+          mode: resolvedMode,
+          executionMode: resolvedExecutionMode,
         });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to send prompt';
@@ -270,6 +321,10 @@ export function useChat() {
       setSessionCompleted,
       setSessionError,
       setSessionStatus,
+      setActiveSession,
+      selectedModel,
+      agentMode,
+      selectedExecutionMode,
     ]
   );
 
@@ -313,17 +368,22 @@ export function useChat() {
       if (!result) return;
 
       setActiveSession(result.session);
+      applySessionPreferences(result.session);
       setSessionCompleted(sessionId, false);
 
       const parsed: ProviderMessage[] = result.messages.map(parseStoredMessage);
       setMessages(parsed);
     },
-    [parseStoredMessage, setActiveSession, setMessages, setSessionCompleted]
+    [applySessionPreferences, parseStoredMessage, setActiveSession, setMessages, setSessionCompleted]
   );
 
   const newChat = useCallback(async () => {
     if (!currentProject) return;
-    const session = await ipc().createSession(currentProject.id);
+    const session = await ipc().createSession(currentProject.id, undefined, {
+      model: selectedModel,
+      mode: agentMode,
+      executionMode: selectedExecutionMode,
+    });
     setActiveSession(session);
     clearChat();
     setSessionStatus(session.id, 'idle');
@@ -331,14 +391,40 @@ export function useChat() {
     setSessionCompleted(session.id, false);
     clearSessionActivity(session.id);
   }, [
+    agentMode,
     clearChat,
     clearSessionActivity,
     currentProject,
+    selectedExecutionMode,
+    selectedModel,
     setActiveSession,
     setSessionCompleted,
     setSessionError,
     setSessionStatus,
   ]);
+
+  const updateSessionPreferences = useCallback(
+    async (requestOptions: ChatRequestOptions) => {
+      if (!activeSession) return;
+      const updates = {
+        model: requestOptions.model ?? selectedModel,
+        mode: requestOptions.mode ?? agentMode,
+        executionMode: requestOptions.executionMode ?? selectedExecutionMode,
+      };
+
+      const result = await ipc()
+        .updateSession({
+          sessionId: activeSession.id,
+          updates,
+        })
+        .catch(() => null);
+
+      if (result?.session && activeSession.id === result.session.id) {
+        setActiveSession(result.session);
+      }
+    },
+    [activeSession, agentMode, selectedExecutionMode, selectedModel, setActiveSession]
+  );
 
   const appendLocalMessage = useCallback(
     async (text: string) => {
@@ -390,5 +476,6 @@ export function useChat() {
     newChat,
     appendLocalMessage,
     archiveSession,
+    updateSessionPreferences,
   };
 }

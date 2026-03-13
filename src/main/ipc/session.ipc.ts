@@ -8,13 +8,18 @@ import {
   getSession,
   deleteSession,
   getMessages,
+  updateSession,
 } from '../services/session.service';
 import type { ProviderContent } from '../../shared/provider-types';
+import type { AgentMode, ChatExecutionMode, ChatRequestOptions } from '../../shared/chat-types';
 
 export function registerSessionHandlers(): void {
-  ipcMain.handle(IPC.SESSION_CREATE, async (_, { projectId, provider }) => {
-    return createSession(projectId, provider);
-  });
+  ipcMain.handle(
+    IPC.SESSION_CREATE,
+    async (_, { projectId, provider, chatOptions }: { projectId: string; provider?: string; chatOptions?: ChatRequestOptions }) => {
+      return createSession(projectId, provider, chatOptions);
+    }
+  );
 
   ipcMain.handle(IPC.SESSION_LIST, async (_, { projectId, includeArchived }: { projectId: string; includeArchived?: boolean }) => {
     return listSessions(projectId, includeArchived ?? false);
@@ -52,4 +57,33 @@ export function registerSessionHandlers(): void {
     setSessionArchived(sessionId, archived);
     return { ok: true };
   });
+
+  ipcMain.handle(
+    IPC.SESSION_UPDATE,
+    async (
+      _,
+      {
+        sessionId,
+        updates,
+      }: {
+        sessionId: string;
+        updates: {
+          title?: string;
+          sdkSessionId?: string;
+          model?: string;
+          mode?: AgentMode;
+          executionMode?: ChatExecutionMode;
+        };
+      }
+    ) => {
+      updateSession(sessionId, {
+        title: updates.title,
+        sdkSessionId: updates.sdkSessionId,
+        model: updates.model,
+        agentMode: updates.mode,
+        executionMode: updates.executionMode,
+      });
+      return { session: getSession(sessionId) };
+    }
+  );
 }

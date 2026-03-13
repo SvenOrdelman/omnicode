@@ -6,7 +6,7 @@ import type { ProviderMessage } from '../../shared/provider-types';
 export function registerChatHandlers(): void {
   ipcMain.handle(
     IPC.CHAT_SEND_PROMPT,
-    async (event, { sessionId, prompt, cwd, sdkSessionId, providerId }) => {
+    async (event, { sessionId, prompt, cwd, sdkSessionId, providerId, model, mode, executionMode }) => {
       const provider = providerRegistry.get(providerId || 'claude');
       if (!provider) throw new Error(`Provider not found: ${providerId}`);
       if (!provider.isConfigured()) throw new Error('Provider not configured. Please set your API key.');
@@ -19,6 +19,9 @@ export function registerChatHandlers(): void {
         prompt,
         cwd,
         sdkSessionId,
+        model,
+        mode,
+        executionMode,
         onMessage: (message: ProviderMessage) => {
           if (!window.isDestroyed()) {
             window.webContents.send(IPC.CHAT_STREAM_MESSAGE, { sessionId, message });

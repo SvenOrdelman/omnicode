@@ -1,13 +1,18 @@
 import { Code2, Map, MessageCircle } from 'lucide-react';
 import { useUIStore } from '../../stores/ui.store';
+import type { AgentMode } from '../../../shared/chat-types';
 
 const modes = [
-  { key: 'code' as const, label: 'Code', icon: Code2 },
   { key: 'plan' as const, label: 'Plan', icon: Map },
-  { key: 'ask' as const, label: 'Ask', icon: MessageCircle },
+  { key: 'chat' as const, label: 'Chat', icon: MessageCircle },
+  { key: 'code' as const, label: 'Code', icon: Code2 },
 ];
 
-export function ModeSelector() {
+interface ModeSelectorProps {
+  onModeChange?: (mode: AgentMode) => void;
+}
+
+export function ModeSelector({ onModeChange }: ModeSelectorProps) {
   const { agentMode, setAgentMode } = useUIStore();
 
   return (
@@ -15,7 +20,10 @@ export function ModeSelector() {
       {modes.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
-          onClick={() => setAgentMode(key)}
+          onClick={() => {
+            setAgentMode(key);
+            onModeChange?.(key);
+          }}
           className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
             agentMode === key
               ? 'bg-surface-3 text-text-primary shadow-sm'

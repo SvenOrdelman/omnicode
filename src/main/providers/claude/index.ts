@@ -2,13 +2,14 @@ import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { shell } from 'electron';
 import { promisify } from 'util';
-import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { Options, PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import type { ILLMProvider, ProviderConfig, SendPromptOptions } from '../types';
 import { adaptSdkMessage, createUserMessage } from './message-adapter';
 import { cancelAllApprovals, createApprovalRequest } from './permission-handler';
 import { addMessage, updateSession } from '../../services/session.service';
 import { getClaudeCommandCatalog, getTopLevelClaudeCommandNames } from '../../services/claude-command.service';
 import type { ClaudeCliCommand, ClaudeCommandCatalog } from '../../../shared/claude-command-types';
+import type { AgentMode, ChatExecutionMode } from '../../../shared/chat-types';
 import type { ProviderMessage } from '../../../shared/provider-types';
 
 const execFileAsync = promisify(execFile);
@@ -96,24 +97,30 @@ function tokenizeArgs(raw: string): string[] {
   return tokens;
 }
 
-function waitForAbort(signal: AbortSignal): Promise<boolean> {
-  if (signal.aborted) {
-    return Promise.resolve(false);
-  }
-
-  return new Promise((resolve) => {
-    signal.addEventListener(
-      'abort',
-      () => {
-        resolve(false);
-      },
-      { once: true }
-    );
-  });
-}
-
 async function waitForDecision(pending: Promise<boolean>, signal: AbortSignal): Promise<boolean> {
-  return Promise.race([pending, waitForAbort(signal)]);
+  return new Promise((resolve) => {
+    let settled = false;
+    const decisionTimeout = setTimeout(() => finish(false), 5 * 60 * 1000);
+
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      clearTimeout(decisionTimeout);
+      resolve(value);
+    };
+
+    const onAbort = () => {
+      // Intentionally no-op: Claude may abort the request signal before the
+      // approval click reaches us. We still wait for explicit user approval.
+    };
+
+    if (!signal.aborted) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    pending.then((approved) => finish(approved)).catch(() => finish(false));
+  });
 }
 
 function createAssistantTextMessage(text: string): ProviderMessage {
@@ -205,6 +212,64 @@ function mdEscape(text: string): string {
 
 function commandLink(command: string, label: string): string {
   return `[${label}](command://${encodeURIComponent(command)})`;
+}
+
+function resolvePermissionMode(mode?: AgentMode, executionMode?: ChatExecutionMode): PermissionMode {
+  if (mode === 'plan') return 'plan';
+  if (executionMode) return executionMode;
+  return 'default';
+}
+
+function resolveTools(mode?: AgentMode): Options['tools'] | undefined {
+  if (mode === 'chat') {
+    return [];
+  }
+  return undefined;
+}
+
+function isEditTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) return false;
+
+  if (normalized === 'edit' || normalized === 'write' || normalized === 'multiedit') {
+    return true;
+  }
+
+  return normalized.includes('edit') || normalized.includes('write');
+}
+
+function isRiskyToolForAutoEdits(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) return true;
+
+  // Shell/command execution should still require approval in auto-edit mode.
+  if (
+    normalized === 'bash' ||
+    normalized.includes('bash') ||
+    normalized.includes('shell') ||
+    normalized.includes('terminal') ||
+    normalized.includes('exec') ||
+    normalized.includes('command')
+  ) {
+    return true;
+  }
+
+  // MCP operations can perform side effects outside the repo context.
+  if (normalized.startsWith('mcp')) {
+    return true;
+  }
+
+  return false;
+}
+
+function toolApprovalFingerprint(toolName: string, input: Record<string, unknown>): string {
+  let serializedInput = '';
+  try {
+    serializedInput = JSON.stringify(input);
+  } catch {
+    serializedInput = '[unserializable-input]';
+  }
+  return `${toolName.trim().toLowerCase()}::${serializedInput}`;
 }
 
 // Active abort controllers per session for interruption
@@ -540,7 +605,10 @@ export class ClaudeProvider implements ILLMProvider {
       return;
     }
 
-    const { sessionId, prompt, cwd, sdkSessionId, onMessage, onEnd, onError } = options;
+    const { sessionId, prompt, cwd, sdkSessionId, model, mode, executionMode, onMessage, onEnd, onError } = options;
+    const resolvedModel = safeTrim(model) || this.model;
+    const resolvedPermissionMode = resolvePermissionMode(mode, executionMode);
+    const resolvedTools = resolveTools(mode);
 
     // Store user message
     const userMsg = createUserMessage(prompt);
@@ -558,48 +626,101 @@ export class ClaudeProvider implements ILLMProvider {
 
     const controller = new AbortController();
     activeControllers.set(sessionId, controller);
+    const decisionByToolUseId = new Map<string, boolean>();
+    const decisionByFingerprint = new Map<string, boolean>();
 
     try {
       // Dynamic import to avoid issues before configuration
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
 
+      const canUseTool: Options['canUseTool'] =
+        resolvedPermissionMode === 'plan'
+          ? undefined
+          : async (
+              toolName: string,
+              input: Record<string, unknown>,
+              permissionContext: {
+                signal: AbortSignal;
+                decisionReason?: string;
+                blockedPath?: string;
+                toolUseID: string;
+              }
+            ) => {
+              const fingerprint = toolApprovalFingerprint(toolName, input);
+              if (decisionByToolUseId.has(permissionContext.toolUseID)) {
+                const approved = decisionByToolUseId.get(permissionContext.toolUseID) === true;
+                if (approved) {
+                  return { behavior: 'allow', toolUseID: permissionContext.toolUseID };
+                }
+                return {
+                  behavior: 'deny',
+                  message: 'User denied this tool request.',
+                  toolUseID: permissionContext.toolUseID,
+                };
+              }
+
+              if (decisionByFingerprint.get(fingerprint) === true) {
+                decisionByToolUseId.set(permissionContext.toolUseID, true);
+                return { behavior: 'allow', toolUseID: permissionContext.toolUseID };
+              }
+
+              if (resolvedPermissionMode === 'bypassPermissions') {
+                decisionByToolUseId.set(permissionContext.toolUseID, true);
+                decisionByFingerprint.set(fingerprint, true);
+                return { behavior: 'allow', toolUseID: permissionContext.toolUseID };
+              }
+
+              if (resolvedPermissionMode === 'dontAsk') {
+                decisionByToolUseId.set(permissionContext.toolUseID, false);
+                return {
+                  behavior: 'deny',
+                  message: 'Execution mode set to "No prompts". Tool execution denied.',
+                  toolUseID: permissionContext.toolUseID,
+                };
+              }
+
+              if (resolvedPermissionMode === 'acceptEdits') {
+                if (isEditTool(toolName) || !isRiskyToolForAutoEdits(toolName)) {
+                  decisionByToolUseId.set(permissionContext.toolUseID, true);
+                  decisionByFingerprint.set(fingerprint, true);
+                  return { behavior: 'allow', toolUseID: permissionContext.toolUseID };
+                }
+              }
+
+              const { request, promise } = createApprovalRequest(
+                sessionId,
+                toolName,
+                input,
+                summarizePermissionReason(permissionContext.decisionReason, permissionContext.blockedPath)
+              );
+              options.onApprovalRequest(request);
+
+              const approved = await waitForDecision(promise, permissionContext.signal);
+              if (approved) {
+                decisionByToolUseId.set(permissionContext.toolUseID, true);
+                decisionByFingerprint.set(fingerprint, true);
+                return { behavior: 'allow', toolUseID: permissionContext.toolUseID };
+              }
+
+              decisionByToolUseId.set(permissionContext.toolUseID, false);
+              return {
+                behavior: 'deny',
+                message: 'User denied this tool request.',
+                toolUseID: permissionContext.toolUseID,
+              };
+            };
+
       const queryOptions: Options = {
         cwd,
-        permissionMode: 'default',
-        model: this.model,
+        permissionMode: resolvedPermissionMode,
+        model: resolvedModel,
+        ...(resolvedTools !== undefined ? { tools: resolvedTools } : {}),
+        ...(resolvedPermissionMode === 'bypassPermissions'
+          ? { allowDangerouslySkipPermissions: true }
+          : {}),
+        ...(canUseTool ? { canUseTool } : {}),
         includePartialMessages: true,
         settingSources: ['user', 'project', 'local'],
-        canUseTool: async (
-          toolName: string,
-          input: Record<string, unknown>,
-          permissionContext: {
-            signal: AbortSignal;
-            decisionReason?: string;
-            blockedPath?: string;
-            toolUseID: string;
-          }
-        ) => {
-          const { request, promise } = createApprovalRequest(
-            sessionId,
-            toolName,
-            input,
-            summarizePermissionReason(permissionContext.decisionReason, permissionContext.blockedPath)
-          );
-          options.onApprovalRequest(request);
-
-          const approved = await waitForDecision(promise, permissionContext.signal);
-          if (approved) {
-            const decision: PermissionResult = { behavior: 'allow', toolUseID: permissionContext.toolUseID };
-            return decision;
-          }
-
-          const decision: PermissionResult = {
-            behavior: 'deny',
-            message: 'User denied this tool request.',
-            toolUseID: permissionContext.toolUseID,
-          };
-          return decision;
-        },
         onElicitation: async (
           request: {
             serverName: string;

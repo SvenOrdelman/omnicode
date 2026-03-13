@@ -44,6 +44,7 @@ export const IPC = {
   SESSION_CREATE: 'session:create',
   SESSION_ADD_MESSAGE: 'session:add-message',
   SESSION_ARCHIVE: 'session:archive',
+  SESSION_UPDATE: 'session:update',
 
   // Terminal
   TERMINAL_CREATE: 'terminal:create',

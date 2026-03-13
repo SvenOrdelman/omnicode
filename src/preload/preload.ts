@@ -6,6 +6,7 @@ import type {
   ProviderStreamErrorEvent,
   ProviderStreamMessageEvent,
 } from '../shared/provider-types';
+import type { AgentMode, ChatExecutionMode, ChatRequestOptions } from '../shared/chat-types';
 import type { SkillDocument, SkillsOverview, SkillSummary } from '../shared/skill-types';
 import type { RemoteAutomationConfig } from '../shared/automation-types';
 import type { ClaudeCommandCatalog } from '../shared/claude-command-types';
@@ -18,6 +19,9 @@ const api = {
     cwd: string;
     sdkSessionId?: string;
     providerId?: string;
+    model?: string;
+    mode?: AgentMode;
+    executionMode?: ChatExecutionMode;
   }) => ipcRenderer.invoke(IPC.CHAT_SEND_PROMPT, params),
   interrupt: (params: { sessionId: string; providerId?: string }) =>
     ipcRenderer.invoke(IPC.CHAT_INTERRUPT, params),
@@ -86,8 +90,8 @@ const api = {
   cancelLogin: () => ipcRenderer.invoke(IPC.AUTH_CANCEL_LOGIN),
 
   // Sessions
-  createSession: (projectId: string, provider?: string) =>
-    ipcRenderer.invoke(IPC.SESSION_CREATE, { projectId, provider }),
+  createSession: (projectId: string, provider?: string, chatOptions?: ChatRequestOptions) =>
+    ipcRenderer.invoke(IPC.SESSION_CREATE, { projectId, provider, chatOptions }),
   listSessions: (projectId: string, includeArchived?: boolean) =>
     ipcRenderer.invoke(IPC.SESSION_LIST, { projectId, includeArchived }),
   getSession: (sessionId: string) => ipcRenderer.invoke(IPC.SESSION_GET, sessionId),
@@ -99,6 +103,16 @@ const api = {
   }) => ipcRenderer.invoke(IPC.SESSION_ADD_MESSAGE, params),
   archiveSession: (params: { sessionId: string; archived: boolean }) =>
     ipcRenderer.invoke(IPC.SESSION_ARCHIVE, params),
+  updateSession: (params: {
+    sessionId: string;
+    updates: {
+      title?: string;
+      sdkSessionId?: string;
+      model?: string;
+      mode?: AgentMode;
+      executionMode?: ChatExecutionMode;
+    };
+  }) => ipcRenderer.invoke(IPC.SESSION_UPDATE, params),
 
   // Terminal
   createTerminal: (id: string, cwd: string) =>
@@ -120,8 +134,8 @@ const api = {
     ipcRenderer.on(IPC.APPROVAL_REQUEST, handler);
     return () => ipcRenderer.removeListener(IPC.APPROVAL_REQUEST, handler);
   },
-  respondApproval: (id: string, approved: boolean) =>
-    ipcRenderer.send(IPC.APPROVAL_RESPOND, { id, approved }),
+  respondApproval: (id: string, approved: boolean): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke(IPC.APPROVAL_RESPOND, { id, approved }),
 
   // Claude Commands
   listClaudeCommands: (forceRefresh?: boolean): Promise<ClaudeCommandCatalog> =>

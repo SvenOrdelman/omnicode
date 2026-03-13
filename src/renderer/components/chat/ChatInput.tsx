@@ -1,12 +1,16 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Bot, ChevronDown, MessageSquareText, RefreshCw, Send, Square } from 'lucide-react';
+import { Bot, ChevronDown, MessageSquareText, RefreshCw, Send, ShieldAlert, Square } from 'lucide-react';
 import { ModeSelector } from '../common/ModeSelector';
 import { useFrequentPromptsStore } from '../../stores/frequent-prompts.store';
+import { useUIStore } from '../../stores/ui.store';
 import { ipc } from '../../lib/ipc-client';
 import type { ClaudeCliCommand, ClaudeCommandCatalog } from '../../../shared/claude-command-types';
+import { CHAT_EXECUTION_MODES, CHAT_MODELS } from '../../../shared/chat-types';
+import type { ChatRequestOptions } from '../../../shared/chat-types';
 
 interface ChatInputProps {
-  onSend: (prompt: string) => void;
+  onSend: (prompt: string, options?: ChatRequestOptions) => void;
+  onPreferencesChange?: (options: ChatRequestOptions) => void;
   onInterrupt: () => void;
   isStreaming: boolean;
   disabled?: boolean;
@@ -20,12 +24,6 @@ interface FlatCommandOption {
   depth: number;
   requiresArguments: boolean;
 }
-
-const claudeModels = [
-  { id: 'claude-sonnet', label: 'Claude Sonnet 4' },
-  { id: 'claude-opus', label: 'Claude Opus 4' },
-  { id: 'claude-haiku', label: 'Claude Haiku 3.5' },
-];
 
 function flattenCommandTree(commands: ClaudeCliCommand[], depth = 0): FlatCommandOption[] {
   const flattened: FlatCommandOption[] = [];
@@ -50,24 +48,59 @@ function getErrorMessage(error: unknown): string {
   return 'Could not load Claude commands.';
 }
 
-export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onPreferencesChange, onInterrupt, isStreaming, disabled }: ChatInputProps) {
   const [value, setValue] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [executionMenuOpen, setExecutionMenuOpen] = useState(false);
   const [promptMenuOpen, setPromptMenuOpen] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [commandCatalog, setCommandCatalog] = useState<ClaudeCommandCatalog | null>(null);
   const [commandsLoading, setCommandsLoading] = useState(false);
   const [commandsError, setCommandsError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState(claudeModels[0]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
+  const executionRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLDivElement>(null);
   const commandRef = useRef<HTMLDivElement>(null);
+  const selectedModel = useUIStore((s) => s.selectedModel);
+  const setSelectedModel = useUIStore((s) => s.setSelectedModel);
+  const selectedExecutionMode = useUIStore((s) => s.selectedExecutionMode);
+  const setSelectedExecutionMode = useUIStore((s) => s.setSelectedExecutionMode);
+  const agentMode = useUIStore((s) => s.agentMode);
   const frequentPrompts = useFrequentPromptsStore((s) => s.prompts);
   const sortedPrompts = useMemo(
     () => [...frequentPrompts].sort((a, b) => b.updatedAt - a.updatedAt),
     [frequentPrompts]
+  );
+  const activeModel = useMemo(
+    () => CHAT_MODELS.find((model) => model.id === selectedModel) ?? CHAT_MODELS[0],
+    [selectedModel]
+  );
+  const activeExecutionMode = useMemo(
+    () => CHAT_EXECUTION_MODES.find((mode) => mode.id === selectedExecutionMode) ?? CHAT_EXECUTION_MODES[0],
+    [selectedExecutionMode]
+  );
+
+  const buildChatOptions = useCallback(
+    (): ChatRequestOptions => ({
+      model: activeModel.id,
+      mode: agentMode,
+      executionMode: activeExecutionMode.id,
+    }),
+    [activeExecutionMode.id, activeModel.id, agentMode]
+  );
+
+  const handlePreferenceChange = useCallback(
+    (partial: Partial<ChatRequestOptions>) => {
+      if (!onPreferencesChange) return;
+      onPreferencesChange({
+        model: partial.model ?? activeModel.id,
+        mode: partial.mode ?? agentMode,
+        executionMode: partial.executionMode ?? activeExecutionMode.id,
+      });
+    },
+    [activeExecutionMode.id, activeModel.id, agentMode, onPreferencesChange]
   );
 
   const flatCommands = useMemo(() => flattenCommandTree(commandCatalog?.commands || []), [commandCatalog]);
@@ -114,11 +147,11 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
-    onSend(trimmed);
+    onSend(trimmed, buildChatOptions());
     setValue('');
     setCommandQuery('');
     setCommandMenuOpen(false);
-  }, [value, disabled, onSend]);
+  }, [buildChatOptions, disabled, onSend, value]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -134,10 +167,10 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
     (message: string) => {
       const trimmed = message.trim();
       if (!trimmed || disabled || isStreaming) return;
-      onSend(trimmed);
+      onSend(trimmed, buildChatOptions());
       setPromptMenuOpen(false);
     },
-    [disabled, isStreaming, onSend]
+    [buildChatOptions, disabled, isStreaming, onSend]
   );
 
   const handleTextareaChange = useCallback(
@@ -149,6 +182,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
         setCommandQuery(normalized.slice(1));
         setPromptMenuOpen(false);
         setModelMenuOpen(false);
+        setExecutionMenuOpen(false);
         setCommandMenuOpen(true);
       } else if (commandMenuOpen) {
         setCommandMenuOpen(false);
@@ -169,12 +203,12 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
         return;
       }
 
-      onSend(command.command);
+      onSend(command.command, buildChatOptions());
       setValue('');
       setCommandQuery('');
       setCommandMenuOpen(false);
     },
-    [disabled, isStreaming, onSend]
+    [buildChatOptions, disabled, isStreaming, onSend]
   );
 
   // Auto-resize textarea
@@ -187,12 +221,16 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
   }, [value]);
 
   useEffect(() => {
-    if (!modelMenuOpen && !promptMenuOpen && !commandMenuOpen) return;
+    if (!modelMenuOpen && !executionMenuOpen && !promptMenuOpen && !commandMenuOpen) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as Node;
 
       if (modelRef.current && !modelRef.current.contains(target)) {
         setModelMenuOpen(false);
+      }
+
+      if (executionRef.current && !executionRef.current.contains(target)) {
+        setExecutionMenuOpen(false);
       }
 
       if (promptRef.current && !promptRef.current.contains(target)) {
@@ -205,7 +243,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [commandMenuOpen, modelMenuOpen, promptMenuOpen]);
+  }, [commandMenuOpen, executionMenuOpen, modelMenuOpen, promptMenuOpen]);
 
   return (
     <div className="relative z-20 bg-transparent px-5 pb-5 pt-3 sm:px-7">
@@ -309,31 +347,79 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
                   onClick={() => {
                     setPromptMenuOpen(false);
                     setCommandMenuOpen(false);
+                    setExecutionMenuOpen(false);
                     setModelMenuOpen((v) => !v);
                   }}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border-default px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:border-border-strong hover:text-text-primary transition-colors"
                 >
                   <Bot size={12} />
-                  <span>{selectedModel.label}</span>
+                  <span>{activeModel.label}</span>
                   <ChevronDown size={12} />
                 </button>
 
                 {modelMenuOpen && (
                   <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
-                    {claudeModels.map((model) => (
+                    {CHAT_MODELS.map((model) => (
                       <button
                         key={model.id}
                         onClick={() => {
-                          setSelectedModel(model);
+                          setSelectedModel(model.id);
+                          handlePreferenceChange({ model: model.id });
                           setModelMenuOpen(false);
                         }}
                         className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[11px] transition-colors ${
-                          selectedModel.id === model.id
+                          activeModel.id === model.id
                             ? 'bg-accent-muted text-text-primary'
                             : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                         }`}
                       >
                         {model.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="relative" ref={executionRef}>
+                <button
+                  onClick={() => {
+                    setPromptMenuOpen(false);
+                    setCommandMenuOpen(false);
+                    setModelMenuOpen(false);
+                    setExecutionMenuOpen((v) => !v);
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    activeExecutionMode.id === 'bypassPermissions'
+                      ? 'border-danger/40 bg-danger/10 text-danger hover:border-danger/60 hover:bg-danger/15'
+                      : 'border-border-default text-text-secondary hover:border-border-strong hover:text-text-primary'
+                  }`}
+                  title={activeExecutionMode.description}
+                >
+                  <ShieldAlert size={12} />
+                  <span>{activeExecutionMode.label}</span>
+                  <ChevronDown size={12} />
+                </button>
+
+                {executionMenuOpen && (
+                  <div className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-border-default bg-surface-2 p-1 shadow-xl">
+                    {CHAT_EXECUTION_MODES.map((executionMode) => (
+                      <button
+                        key={executionMode.id}
+                        onClick={() => {
+                          setSelectedExecutionMode(executionMode.id);
+                          handlePreferenceChange({ executionMode: executionMode.id });
+                          setExecutionMenuOpen(false);
+                        }}
+                        className={`w-full rounded-lg px-2.5 py-2 text-left transition-colors ${
+                          activeExecutionMode.id === executionMode.id
+                            ? executionMode.id === 'bypassPermissions'
+                              ? 'bg-danger/15 text-danger'
+                              : 'bg-accent-muted text-text-primary'
+                            : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                        }`}
+                      >
+                        <div className="text-[11px] font-semibold">{executionMode.label}</div>
+                        <div className="mt-0.5 text-[10px] opacity-90">{executionMode.description}</div>
                       </button>
                     ))}
                   </div>
@@ -346,6 +432,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
                     if (!sortedPrompts.length) return;
                     setCommandMenuOpen(false);
                     setModelMenuOpen(false);
+                    setExecutionMenuOpen(false);
                     setPromptMenuOpen((v) => !v);
                   }}
                   disabled={!sortedPrompts.length || disabled || isStreaming}
@@ -373,7 +460,7 @@ export function ChatInput({ onSend, onInterrupt, isStreaming, disabled }: ChatIn
               </div>
 
               <div className="hidden sm:block">
-                <ModeSelector />
+                <ModeSelector onModeChange={(mode) => handlePreferenceChange({ mode })} />
               </div>
             </div>
           </div>

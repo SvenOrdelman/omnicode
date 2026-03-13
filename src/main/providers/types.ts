@@ -1,4 +1,5 @@
 import type { ProviderMessage, ProviderStreamDelta, ApprovalRequest } from '../../shared/provider-types';
+import type { AgentMode, ChatExecutionMode } from '../../shared/chat-types';
 
 export interface ProviderConfig {
   model?: string;
@@ -10,6 +11,9 @@ export interface SendPromptOptions {
   prompt: string;
   cwd: string;
   sdkSessionId?: string;
+  model?: string;
+  mode?: AgentMode;
+  executionMode?: ChatExecutionMode;
   onMessage: (message: ProviderMessage) => void;
   onDelta: (delta: ProviderStreamDelta) => void;
   onApprovalRequest: (request: ApprovalRequest) => void;

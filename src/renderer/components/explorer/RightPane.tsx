@@ -363,6 +363,7 @@ export function RightPane() {
   const lastAutoRefreshAtRef = useRef(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const selectAllCheckboxRef = useRef<HTMLInputElement | null>(null);
+  const commitTitleInputRef = useRef<HTMLInputElement | null>(null);
 
   const canEditSelectedFile = useMemo(
     () => Boolean(selectedChangeFile && fileView && fileView.source === 'working_tree'),
@@ -516,6 +517,18 @@ export function RightPane() {
     if (!selectAllCheckboxRef.current) return;
     selectAllCheckboxRef.current.indeterminate = someCommitFilesSelected;
   }, [someCommitFilesSelected]);
+
+  useEffect(() => {
+    if (!commitDialogOpen) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      commitTitleInputRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [commitDialogOpen]);
 
   const refreshOnWindowActive = useCallback(async () => {
     if (!currentProject || lockNavigation) return;
@@ -1344,6 +1357,7 @@ export function RightPane() {
             </label>
             <input
               id="commit-title"
+              ref={commitTitleInputRef}
               value={commitTitle}
               onChange={(event) => setCommitTitle(event.target.value)}
               placeholder="Short commit title"

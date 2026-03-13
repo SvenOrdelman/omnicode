@@ -24,8 +24,11 @@ export function useApproval() {
   }, [addRequest, removeSessionRequests]);
 
   const respond = useCallback(
-    (id: string, approved: boolean) => {
-      ipc().respondApproval(id, approved);
+    async (id: string, approved: boolean) => {
+      const result = await ipc().respondApproval(id, approved).catch(() => ({ ok: false }));
+      if (!result?.ok) {
+        return;
+      }
       removeRequest(id);
     },
     [removeRequest]
